@@ -264,6 +264,8 @@ def plot_series_with_prefix(
         plt.close()
 
         # rotations
+        # deprecated, no longer in use
+        '''
         fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
         for ax_idx, (c, name) in enumerate(comps):
             ax = axes[ax_idx]
@@ -290,6 +292,7 @@ def plot_series_with_prefix(
         plt.tight_layout()
         plt.savefig(out_dir / f'{prefix}_rotation_series.png', dpi=150, bbox_inches='tight')
         plt.close()
+        '''
     except Exception as e:
         logger = get_logger()
         logger.exception('Error creating series plots with prefix: %s', e)

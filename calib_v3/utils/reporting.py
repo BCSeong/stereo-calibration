@@ -378,7 +378,7 @@ def save_all_results(
     
     if save_error_plots_flag and by_folder is not None:        
         rel_series_naive = compute_relative_transforms_without_rotation(calib_result.rvecs, calib_result.tvecs, by_folder)
-        plot_series_with_prefix(rel_series_naive, Path(output_dir) / 'debug', prefix='naive_tonly')
+        plot_series_with_prefix(rel_series_naive, Path(output_dir) / 'debug', prefix='')
     
     # Consistency report: translation_series 표준편차 vs extrinsics std 비교
     # deprecated, instead use compute_relative_transforms_without_rotation
