@@ -73,7 +73,7 @@ class AppConfig:
     # GridConfig
     #########################################           
     # 아래 파라미터는 캘리브레이션 타겟에 따라 반드시 변경되어야 합니다.        
-    dot_pitch_mm: float = 0.7 # blob 사이 거리 in mm
+    dot_pitch_um: float = 700 # blob 사이 거리 in um
     max_grid_size: int = 100 # grid 최대 크기가 N X N cells 인지. N 보다 max_grid_size 가 커야 안정적.
 
 
@@ -126,7 +126,7 @@ class RuntimeState:
     tvecs: Optional[List[np.ndarray]] = None
     rms_reproj: float = 0.0
     transport: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-    resolution_mm_per_px: float = 0.0
+    resolution_um_per_px: float = 0.0
     min_xy: Optional[Tuple[float, float]] = None
     max_xy: Optional[Tuple[float, float]] = None
     map_shape: Optional[Tuple[int, int]] = None  # (H,W)

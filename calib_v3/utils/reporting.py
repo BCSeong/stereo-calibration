@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 from .analysis import (
     compute_transport_vector,
-    compute_resolution_mm_per_px,
+    compute_resolution_um_per_px,
     compute_relative_transforms,
     compute_relative_transforms_world,
     compute_relative_transforms_without_rotation,
@@ -83,7 +83,7 @@ def make_calibration_json(
     dist: np.ndarray,
     img_size: Tuple[int, int],
     transport: List[float],
-    resolution_mm_per_px: float,
+    resolution_um_per_px: float,
     map_shape: Tuple[int, int],  # (H, W)
     std_intr: Optional[np.ndarray],
     std_extr: Optional[np.ndarray],
@@ -108,7 +108,7 @@ def make_calibration_json(
         'cam_center_x': cam_cx,
         'cam_center_y': cam_cy,
         'cam_focal': cam_f,
-        'resolution': float(resolution_mm_per_px),
+        'resolution': float(resolution_um_per_px),
         'map_width': map_w,
         'map_height': map_h,
         'error': {
@@ -168,7 +168,7 @@ def save_calibration_results(
     img_size: Tuple[int, int],
     by_folder: Dict[str, List[int]] = None,
     transport: List[float] = None,
-    resolution_mm_per_px: float = None,
+    resolution_um_per_px: float = None,
     map_shape: Tuple[int, int] = None,
     verbose: bool = True
 ) -> bool:
@@ -186,7 +186,7 @@ def save_calibration_results(
     # 2. JSON 파일로 저장 (calib_v2와 동일한 구조)
     calib_json = make_calibration_json(
         calib_result.K, calib_result.dist, img_size,
-        transport, resolution_mm_per_px, map_shape, 
+        transport, resolution_um_per_px, map_shape, 
         calib_result.std_intr, calib_result.std_extr, rms_reproj
     )
     save_json(Path(output_dir) / 'calibration.json', calib_json)
@@ -217,7 +217,7 @@ def save_calibration_results(
         logger.info('\t Distortion coefficients (k1, k2, p1, p2, k3): %s', str(calib_result.dist.flatten()))
         logger.info('\t RMS reprojection error (≤ 0.5 px): %.6f', rms_reproj)
         logger.info('\t Transport vector (x, y, z): %s', str(transport))
-        logger.info('\t Resolution on center fiducial (mm/px): %.6f', resolution_mm_per_px)
+        logger.info('\t Resolution on center fiducial (um/px): %.6f', resolution_um_per_px)
     
     # Reprojection error 체크 및 디버그 가이드
     if rms_reproj > 0.5:
@@ -337,12 +337,12 @@ def save_all_results(
     
     # Transport 및 Resolution 계산
     transport = compute_transport_vector(calib_result.tvecs, by_folder, TRANSPORT_CONFIG.axis_sign)
-    resolution_mm_per_px = compute_resolution_mm_per_px(calib_result.K, calib_result.tvecs)
+    resolution_um_per_px = compute_resolution_um_per_px(calib_result.K, calib_result.tvecs)
 
     # RuntimeState 업데이트
     if state is not None:
         state.transport = tuple(transport)
-        state.resolution_mm_per_px = resolution_mm_per_px
+        state.resolution_um_per_px = resolution_um_per_px
 
     # LUT 생성 및 저장
     lut_info = save_lut_maps(output_dir, calib_result, img_size, transport, TRANSPORT_CONFIG, verbose)
@@ -364,7 +364,7 @@ def save_all_results(
         object_points_list, image_points_list, img_size,
         by_folder=by_folder,
         transport=transport,
-        resolution_mm_per_px=resolution_mm_per_px,
+        resolution_um_per_px=resolution_um_per_px,
         map_shape=map_shape,
         verbose=verbose
     )

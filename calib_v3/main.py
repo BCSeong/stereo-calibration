@@ -237,15 +237,15 @@ def run(argv=None) -> RuntimeState:
             
             # 성공한 프레임의 points 수집 (grid_assign이 비어있지 않으면 성공)
             if res.grid_assign and len(res.grid_assign) > 0:
-                # object points 생성 (실제 dot_pitch_mm 사용)
+                # object points 생성 (실제 dot_pitch_um 사용)
                 grid_keys = list(res.grid_assign.keys())
                 if grid_keys:
-                    # 격자 좌표를 실제 월드 좌표로 변환 (dot_pitch_mm 사용)
+                    # 격자 좌표를 실제 월드 좌표로 변환 (dot_pitch_um 사용)
                     uv = np.array(grid_keys, dtype=np.int32)
                     object_pts = np.zeros((len(uv), 3), dtype=np.float32)
-                    object_pts[:, 0] = uv[:, 0] * float(GRID_CONFIG.dot_pitch_mm)  # X: mm
-                    object_pts[:, 1] = uv[:, 1] * float(GRID_CONFIG.dot_pitch_mm)  # Y: mm
-                    object_pts[:, 2] = 0.0  # Z: mm (평면)
+                    object_pts[:, 0] = uv[:, 0] * float(GRID_CONFIG.dot_pitch_um)  # X: um
+                    object_pts[:, 1] = uv[:, 1] * float(GRID_CONFIG.dot_pitch_um)  # Y: um
+                    object_pts[:, 2] = 0.0  # Z: um (평면)
                     
                     # FrameData 구조로 저장
                     frame_data = FrameData(

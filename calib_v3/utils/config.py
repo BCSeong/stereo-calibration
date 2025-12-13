@@ -62,7 +62,7 @@ class GridConfig:
     - grid_assign / dilate_with_local_refine (max_radius, use_lmeds)
     """    
     estimatation_affine_method_opencv: int = cv2.LMEDS # cv2.LMEDS or cv2.RANSAC both are acceptable
-    dot_pitch_mm: float = None # 타겟에 따라 blob 간격 다를 수 있음 
+    dot_pitch_um: float = None # 타겟에 따라 blob 간격 다를 수 있음 
     max_grid_size: int = 100 # 격자 공간에서 (0,0)에서 최대 거리, 이보다 먼 좌표의 격자는 할당하지 않음, 타겟과 시스템의 FOV에 따라 총 격자 크기 다를 수 있음
 
 

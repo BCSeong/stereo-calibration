@@ -29,7 +29,7 @@ def plot_tvecs(tvecs: np.ndarray, dimension_names: list):
             ax[j, i].plot(range(num_frames), tvecs[i, :, j], label=f"Target {i+1}, {dimension_names[j]}")
             ax[j, i].set_title(f"Target {i+1}, {dimension_names[j]}")
             ax[j, i].set_xlabel("Frame")
-            ax[j, i].set_ylabel(f"Translation {dimension_names[j]} (mm)")
+            ax[j, i].set_ylabel(f"Translation {dimension_names[j]} (um)")
             ax[j, i].grid(True)
             ax[j, i].set_xlim(0, num_frames)     
             ax[j, i].set_xticks(range(0, num_frames, 10))

@@ -27,7 +27,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('-binarize_thd', dest='bin_threshold', type=float, default=default_config.binarize_thd, help='binarization threshold, default is "Otsu"')
     
     # pattern/camera scale ---------------------------------------------------------
-    ap.add_argument('-s', '--spacing', dest='dot_pitch_mm', type=float, default=default_config.dot_pitch_mm, help='dot pitch in mm')
+    ap.add_argument('-s', '--spacing', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um')
     
     # lut -----------------------------------------------------------
     ap.add_argument('--lut_policy', dest='lut_policy', type=str, choices=['crop', 'expand'], default=default_config.lut_policy, help='lut policy, crop or expand')

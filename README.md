@@ -33,17 +33,15 @@ python -m calib_v3.main <입력_이미지_폴더> <출력_폴더>
 # 디버그 이미지 저장 활성화
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_debug
 
-# Outlier 자동 제거 (권장)
-python -m calib_v3.main sample_imgs_KYICI_4M output_4M --remove_outliers --outlier_threshold 2.0
-
-# 에러 플롯 저장
+# 에러 플롯 저장 (json 에도 포함됨)
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_error
 
 # 상세 로그 출력
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M --verbose
 
-# 도트 간격 설정 (mm 단위, 기본값: 0.5mm)
-python -m calib_v3.main sample_imgs_KYICI_4M output_4M -s 0.5
+# 도트 간격 설정 (um 단위)
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M -s 500
+python -m calib_v3.main sample_imgs_25M_lota_unit1 output_25M -s 700
 
 
 

@@ -41,24 +41,24 @@ def compute_transport_vector(
     return transport
 
 
-def compute_resolution_mm_per_px(
+def compute_resolution_um_per_px(
     K: np.ndarray, 
     tvecs: List[np.ndarray]
 ) -> float:
-    """Resolution 계산 (mm/px) (calib_v2와 동일한 로직)
+    """Resolution 계산 (um/px) 
     
     Args:
         K: 카메라 내부 파라미터 행렬
         tvecs: 각 프레임의 translation vector 리스트
         
     Returns:
-        resolution_mm_per_px: 픽셀당 mm 단위
+        resolution_um_per_px: 픽셀당 um 단위
     """
     fx = float(K[0, 0])
     z_vals = [float(tvecs[i].ravel()[2]) for i in range(len(tvecs))]
     mean_Z = float(np.mean(z_vals)) if z_vals else 0.0
-    resolution_mm_per_px = (mean_Z / fx) if fx > 0 else 0.0
-    return float(resolution_mm_per_px)
+    resolution_um_per_px = (mean_Z / fx) if fx > 0 else 0.0
+    return float(resolution_um_per_px)
 
 # deprecated, instead use compute_relative_transforms_without_rotation
 def compute_relative_transforms(
@@ -178,12 +178,12 @@ def plot_series(
                 # Matplotlib은 '_'로 시작하는 레이블을 legend에서 무시하므로 안전 라벨 적용
                 safe_label = folder_name if not str(folder_name).startswith('_') else f" {folder_name}"
                 ax.plot(xs, [t[c] for (_, t) in seq], 'o-', label=safe_label, markersize=3)
-            ax.set_ylabel(f'Translation {name} (mm)')
+            ax.set_ylabel(f'Translation {name} (um)')
             ax.grid(True, alpha=0.3)
             if ax.get_legend_handles_labels()[0]:  # legend가 있을 때만 추가
                 ax.legend()
         
-        axes[-1].set_xlabel('Cumulative Distance (mm)')
+        axes[-1].set_xlabel('Cumulative Distance (um)')
         plt.tight_layout()
         plt.savefig(out_dir / 'translation_series.png', dpi=150, bbox_inches='tight')
         plt.close()
@@ -212,7 +212,7 @@ def plot_series(
             if ax.get_legend_handles_labels()[0]:  # legend가 있을 때만 추가
                 ax.legend()
         
-        axes[-1].set_xlabel('Cumulative Distance (mm)')
+        axes[-1].set_xlabel('Cumulative Distance (um)')
         plt.tight_layout()
         plt.savefig(out_dir / 'rotation_series.png', dpi=150, bbox_inches='tight')
         plt.close()
@@ -254,11 +254,11 @@ def plot_series_with_prefix(
                     vals.append(v)
                 safe_label = folder_name if not str(folder_name).startswith('_') else f" {folder_name}"
                 ax.plot(xs, vals, 'o-', label=safe_label, markersize=3)
-            ax.set_ylabel(f'Translation {name} (mm)')
+            ax.set_ylabel(f'Translation {name} (um)')
             ax.grid(True, alpha=0.3)
             if ax.get_legend_handles_labels()[0]:
                 ax.legend()
-        axes[-1].set_xlabel('Cumulative Distance (mm)')
+        axes[-1].set_xlabel('Cumulative Distance (um)')
         plt.tight_layout()
         plt.savefig(out_dir / f'{prefix}_translation_series.png', dpi=150, bbox_inches='tight')
         plt.close()
@@ -288,7 +288,7 @@ def plot_series_with_prefix(
             ax.grid(True, alpha=0.3)
             if ax.get_legend_handles_labels()[0]:
                 ax.legend()
-        axes[-1].set_xlabel('Cumulative Distance (mm)')
+        axes[-1].set_xlabel('Cumulative Distance (um)')
         plt.tight_layout()
         plt.savefig(out_dir / f'{prefix}_rotation_series.png', dpi=150, bbox_inches='tight')
         plt.close()
