@@ -125,8 +125,8 @@ class ThreeDotDetector:
                             cx0 = float(M['m10'] / M['m00'])
                             cy0 = float(M['m01'] / M['m00'])
                             # 윈도우 추출 범위 (이미지 경계 클램프)
-                            win_w = int(max(3, self.detector_config.subpix_window[0]))
-                            win_h = int(max(3, self.detector_config.subpix_window[1]))
+                            win_w = int(max(3, self.blob_config.subpix_window[0]))
+                            win_h = int(max(3, self.blob_config.subpix_window[1]))
                             x0 = max(0, min(W - 1, int(round(cx0))))
                             y0 = max(0, min(H - 1, int(round(cy0))))
                             x1 = max(0, min(W - 1, x0 - win_w))
@@ -137,8 +137,8 @@ class ThreeDotDetector:
                             if roi.size > 0:
                                 # cornerSubPix는 float32 Nx1x2 포맷 포인트 필요
                                 pts_in = np.array([[[cx0 - x1, cy0 - y1]]], dtype=np.float32)
-                                criteria = (int(self.detector_config.subpix_criteria[0]), int(self.detector_config.subpix_criteria[1]), float(self.detector_config.subpix_criteria[2]))
-                                cv2.cornerSubPix(roi, pts_in, (win_w, win_h), (int(self.detector_config.subpix_zero_zone[0]), int(self.detector_config.subpix_zero_zone[1])), criteria)
+                                criteria = (int(self.blob_config.subpix_criteria[0]), int(self.blob_config.subpix_criteria[1]), float(self.blob_config.subpix_criteria[2]))
+                                cv2.cornerSubPix(roi, pts_in, (win_w, win_h), (int(self.blob_config.subpix_zero_zone[0]), int(self.blob_config.subpix_zero_zone[1])), criteria)
                                 cx_ref = float(pts_in[0,0,0] + x1)
                                 cy_ref = float(pts_in[0,0,1] + y1)
                                 x, y = cx_ref, cy_ref
@@ -183,7 +183,7 @@ class ThreeDotDetector:
                 p = cv2.SimpleBlobDetector_Params()
                 p.filterByArea = True
                 p.minArea = float(self.blob_config.min_area)
-                p.maxArea = float(getattr(self.blob_config, 'max_area', self.detector_config.max_area))
+                p.maxArea = float(getattr(self.blob_config, 'max_area', self.blob_config.max_area))
                 p.filterByCircularity = True
                 p.minCircularity = float(max(0.0, min(1.0, self.blob_config.min_fill)))
                 p.filterByConvexity = True
@@ -367,7 +367,7 @@ class ThreeDotDetector:
         """모든 후보에 대해 6개 아핀 평가 후 최적 Tc/center/chosen_triplet/P/nn24 선택."""
         if not cands:
             get_logger().error('[FAIL] cands is None')
-            return None, None, None, None, None, None, 0, 0.0
+            return None, None, None, None, None, None, 0
         best = None
         best_P = None
         examined = 0
@@ -521,6 +521,9 @@ class ThreeDotDetector:
         # Use provided initial grid or compute from scratch
         if initial_grid is not None:
             assigned = initial_grid.copy()        
+        else:
+            get_logger().error('[FAIL] initial_grid is None')
+            return {}
 
         explored: set[Tuple[int, int]] = set()
 

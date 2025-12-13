@@ -125,14 +125,16 @@ def run(argv=None) -> RuntimeState:
     TRANSPORT_CONFIG: TransportConfig = merge_config_from_app(config, TransportConfig())
 
     # 이미지 재귀 수집, 모든 이미지 처리를 하지 않고 일부 이미지만 처리하여 속도를 빠르게 할 수도 있음.
-    # 예) 매 100번째 이미지만 처리하려면:
+    # 예) 매 100번째 이미지만 처리하려면 step=100:
     def iter_images_recursive(root, step=1):
-        root_path = Path(root)  # str을 Path로 변환
-        for i, p in enumerate(sorted(root_path.rglob('*'))):
-            if p.is_file() and (p.suffix.lower() in ('.bmp', '.png')):
-                if i % step == 0:
-                    yield p
-
+        root_path = Path(root)
+        # 이미지 파일만 먼저 필터링
+        image_files = [p for p in sorted(root_path.rglob('*')) 
+                    if p.is_file() and (p.suffix.lower() in ('.bmp', '.png'))]
+        # 이미지 파일만 enumerate
+        for i, p in enumerate(image_files):
+            if i % step == 0:
+                yield p
     if config.verbose:
         logger.info('[CONFIG] %s', {'src': str(config.src), 'dst': str(config.dst), 'blob': {'min_area': float(BLOB_CONFIG.min_area), 'min_fill': float(BLOB_CONFIG.min_fill), 'max_ecc': float(BLOB_CONFIG.max_eccentricity)}})
 
@@ -440,5 +442,4 @@ if __name__ == '__main__':
     # CLI 실행 시에는 성공 여부에 따라 exit code 반환
     exit_code = 0 if state.rms_reproj <= 0.5 else 1
     raise SystemExit(exit_code)
-
 
