@@ -5,8 +5,7 @@ import numpy as np
 import cv2
 import tifffile as tiff
 from pathlib import Path
-from ..utils.config import TRANSPORT
-
+from ..utils.config import TransportConfig
 
 def compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, safety: float) -> Tuple[np.ndarray, np.ndarray]:
     """왜곡 보정 후 유효한 영역의 경계 상자를 계산"""
@@ -71,7 +70,7 @@ def build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int]
     return map_x, map_y, P_shift, newW, newH
 
 
-def apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float) -> Tuple[np.ndarray, np.ndarray, bool]:
+def apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float, transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
     """수평 플립 정책 적용 (TransportConfig 기준)
     
     Args:
@@ -81,15 +80,14 @@ def apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float) -
     Returns:
         (map_x, map_y, did_flip): 플립된 맵과 플립 여부
     """
-    from ..utils.config import TRANSPORT
     
     # TransportConfig를 이용한 flip 결정
-    axis_x_sign = TRANSPORT.axis_sign[0]  # TransportConfig의 X축 부호
-    
+    axis_x_sign = transport_axis_sign[0]
+        
     # hflip_on_negative_mean_trel_x 조건이 활성화되어 있고,
     # 산출된 X 위치가 axis_sign과 부호가 다르면 flip 수행
     should_flip = False
-    if TRANSPORT.hflip_on_negative_mean_trel_x:
+    if hflip_on_negative_mean_trel_x:
         # trel_x와 axis_x_sign의 부호가 다르면 flip
         if (trel_x > 0) != (axis_x_sign > 0):
             should_flip = True
@@ -151,9 +149,8 @@ def generate_lut(
     K: np.ndarray, 
     dist: np.ndarray, 
     img_size: Tuple[int, int],
-    lut_policy: str = 'crop',
-    lut_crop_margin: float = 0.0,
-    trel_x_sign: float = 0.0
+    trel_x_sign: float = 0.0,
+    TRANSPORT_CONFIG: TransportConfig = None,
 ) -> Tuple[np.ndarray, np.ndarray, dict]:
     """LUT 생성 및 저장
     
@@ -171,7 +168,7 @@ def generate_lut(
     w, h = img_size
     
     # 안전 마진 계산
-    safety = max(1.0, float(lut_crop_margin)) if lut_policy == 'crop' else 0.0
+    safety = max(1.0, float(TRANSPORT_CONFIG.lut_crop_margin)) if TRANSPORT_CONFIG.lut_policy == 'crop' else 0.0
     
     # 내접 경계 상자 계산
     min_xy, max_xy = compute_inscribed_bbox(K, dist, w, h, safety)
@@ -180,11 +177,11 @@ def generate_lut(
     map_x, map_y, P_shift, newW, newH = build_rectify_map(K, dist, img_size, min_xy, max_xy)
     
     # 수평 플립 적용 (TransportConfig 정책 사용)
-    map_x, map_y, did_flip = apply_hflip_if_needed(map_x, map_y, trel_x_sign)
+    map_x, map_y, did_flip = apply_hflip_if_needed(map_x, map_y, trel_x_sign, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
     
     # 크롭 정책 적용
-    if lut_policy == 'crop':
-        map_x, map_y, crop_bbox = largest_all_valid_rect(map_x, map_y, w, h, margin=float(max(0.0, lut_crop_margin)))
+    if TRANSPORT_CONFIG.lut_policy == 'crop':
+        map_x, map_y, crop_bbox = largest_all_valid_rect(map_x, map_y, w, h, margin=float(max(0.0, TRANSPORT_CONFIG.lut_crop_margin)))
     else:
         crop_bbox = (0, map_x.shape[0]-1, 0, map_x.shape[1]-1)
     
@@ -194,8 +191,8 @@ def generate_lut(
         'original_size': img_size,        
         'crop_bbox': crop_bbox,
         'did_flip': did_flip,
-        'policy': lut_policy,
-        'margin': lut_crop_margin
+        'policy': TRANSPORT_CONFIG.lut_policy,
+        'margin': TRANSPORT_CONFIG.lut_crop_margin
     }
     
     return map_x, map_y, lut_info

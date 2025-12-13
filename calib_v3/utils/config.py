@@ -5,22 +5,29 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class DetectorConfig:
+class BlobDetectorConfig:
     """get_points.three_dots: 블롭/컨투어 검출 및 전처리 파라미터.
 
     사용처:
     - ThreeDotDetector._create_blob_detector / detect_blobs
     - get_points.detector (폴더 처리)
     """
-
-    blob_dia_in_px = 25
+    blob_dia_in_px: float = 37.5
+    
     # -------------------------------------------------------------
-    # 공통 blob detector 파라미터
-    min_fill: float = 0.8
-    min_area: float = 0.75 * 3.14* (blob_dia_in_px/2)**2 if blob_dia_in_px is not None else 300.0 #  - 지름 20px와 동등: π*(9^2) ≈ 300        
-    max_area: float = 4.00 * 3.14* (blob_dia_in_px/2)**2 if blob_dia_in_px is not None else 8000.0 #  - 지름 100px와 동등: π*(50^2) ≈ 8000
+    # 공통 blob detector 파라미터    
+    min_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
+    max_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
+    min_fill: float = 0.8    
     max_eccentricity: float = 0.85
-    fnn_filter: int = 25
+
+    bin_threshold: float = None # if 0 or None, Otsu is used
+    retrieval: str = "list"
+
+    # -------------------------------------------------------------
+    # FNN 옵션, 중앙 fiducail 검색 도구
+    fnn_filter: int = 25 # fiducail point 인접 dot 개수 constraint
+    fnn_grid_explore_size: int = 10 # 격자 공간에서 중앙 점을 중심으로 이 크기만큼의 격자를 탐색하여 최근접 이웃을 찾음
     # FNN 반경 = beta * local_d (local_d는 k-NN 기반 지역 스케일)
     fnn_radius_beta: float = 10.0 # 반경을 정의,  R(px) = fnn_radius_beta × local_d(px), 여기서 local_d는 k-NN(기본 k≈5)의 2번째 이웃 거리의 중앙값
     # 지역 스케일 산출용 k (자기 자신 포함). 작을수록 빠르고, 너무 작으면 불안정
@@ -28,12 +35,10 @@ class DetectorConfig:
     # FNN 필터가 과도하게 적용되어 남는 점이 너무 적을 때 롤백 기준
     fnn_rollback_min_kept: int = 9
     fnn_rollback_fraction: float = 0.25
-    bin_threshold: float = None # if 0 or None, Otsu is used
-    retrieval: str = "list"
 
     # -------------------------------------------------------------
     # retreival 옵션 SBD 에서 사용    
-    sbd_min_dist_between_blobs: float = 1.50 * blob_dia_in_px if blob_dia_in_px is not None else 25.0 
+    sbd_min_dist_between_blobs: float = 1.50 * blob_dia_in_px
     sbd_fixed_threshold: int = 'otsu' # 'otsu' or int
     sbd_blob_color: int = 0 # None → opencv blobColor 미적용, 0: dark, 255: light
     sbd_min_repeatability: int = 1   # SBD는 단일 임계 사용 시 최소 1 권장
@@ -49,20 +54,30 @@ class DetectorConfig:
     subpix_zero_zone: tuple = (-1, -1)
     subpix_criteria: tuple = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-3)
     
+@dataclass(frozen=True)
+class GridConfig:
+    """get_points.three_dots: 격자 확장 반경 및 추정 방법.
+
+    사용처:
+    - grid_assign / dilate_with_local_refine (max_radius, use_lmeds)
+    """    
+    estimatation_affine_method_opencv: int = cv2.LMEDS # cv2.LMEDS or cv2.RANSAC both are acceptable
+    dot_pitch_mm: float = None # 타겟에 따라 blob 간격 다를 수 있음 
+    max_grid_size: int = 100 # 격자 공간에서 (0,0)에서 최대 거리, 이보다 먼 좌표의 격자는 할당하지 않음, 타겟과 시스템의 FOV에 따라 총 격자 크기 다를 수 있음
 
 
 @dataclass(frozen=True)
-class CandidateConfig:
+class AffineCandidateConfig:
     """get_points.three_dots: 중앙 3점 후보(집합 B) 분리 파라미터.
 
     사용처:
     - ThreeDotDetector.find_central_candidates (Step 3)
     """
-    topk: int = 5
-    uplift_all_med: float = 1.10
-    ensure_top3_factor: float = 0.99
-    big_size_median_mult: float = 1.35
-    neighbors_central: int = 24
+    topk: int = 5 # 집합 B 후보를 찾기 위해 상위 topk 개의 점을 선택
+    uplift_all_med: float = 1.10 # 모든 점의 크기 중앙값을 찾은 뒤 그보다 얼마나 큰 점을 thresholding하여 후보로 선택할지 결정
+    ensure_top3_factor: float = 0.99 # 3번째로 큰 점을 찾은 뒤 이 비율보다 작은 점은 무시
+    big_size_median_mult: float = 1.35 # 모든 점의 크기 중앙값대비 이 비율보다 작은 점은 무시
+    neighbors_central: int = 24 # 각 중앙 후보 점(kidx) 주변에서 k24개의 최근접 이웃을 찾습니다. k24개 이웃 중 집합 B에 속하는 점이 정확히 2개인 경우만 유효한 triplet 후보로 선택합니다
 
 
 @dataclass(frozen=True)
@@ -112,38 +127,6 @@ class ScoringConfig:
 
 
 @dataclass(frozen=True)
-class CalibrateConfig:
-    """calibrate_points.calibrator: OpenCV 캘리브레이션 플래그.
-
-    사용처:
-    - calibrate_shared 내부 (cv2.calibrateCamera* flags 구성 시)
-    """
-    calib_flags: int = 0
-
-
-@dataclass(frozen=True)
-class GridConfig:
-    """get_points.three_dots: 격자 확장 반경 및 추정 방법.
-
-    사용처:
-    - grid_assign / dilate_with_local_refine (max_radius, use_lmeds)
-    """
-    max_radius: int = 30
-    use_lmeds: bool = True
-
-
-@dataclass(frozen=True)
-class PatternConfig:
-    """캘리브레이션 패턴 설정 (통합 설정).
-
-    사용처:
-    - main.run: object points 생성 시 dot_pitch_mm 사용
-    - calibrate_points: 실제 월드 좌표 계산
-    """
-    dot_pitch_mm: float = 0.5  # 도트 간격 (mm)
-
-
-@dataclass(frozen=True)
 class DebugConfig:
     """debug.visuals 및 get_points.three_dots 오버레이 스타일.
 
@@ -152,9 +135,9 @@ class DebugConfig:
     """
     point_radius: int = 10
     point_thickness: int = 2
-    label_font_scale: float = 2.0
+    label_font_scale: float = 3.0
     label_thickness: int = 4
-    lline_thickness: int = 2
+    line_thickness: int = 2
     grid_circle_radius: int = 4
     arrow_scale: float = 10.0
     plot_figsize: tuple = (10, 4)
@@ -177,15 +160,6 @@ class DebugConfig:
     grid_error_thickness: int = 2  # 큰 에러 벡터 두께
 
 
-DETECTOR = DetectorConfig()
-CAND = CandidateConfig()
-SCORE = ScoringConfig()
-CALIB = CalibrateConfig()
-GRID = GridConfig()
-PATTERN = PatternConfig()
-DEBUG = DebugConfig()
-
-
 @dataclass(frozen=True)
 class TransportConfig:
     """main.run: 이동 벡터 출력 좌표계 부호 설정.
@@ -204,7 +178,11 @@ class TransportConfig:
     # 이 정책 토글(하드코딩 기준) 관리:
     hflip_on_negative_mean_trel_x: bool = True
 
-
-TRANSPORT = TransportConfig()
+    # LUT 정책 설정
+    # LUT 는 rectified 이미지를 생성하는 맵입니다.
+    # 이미지 외곽 등에서 품질이 저하된다면 crop_margin 증가로 stereo 연산에 사용되는 이미지 크기를 줄이는 것도 방법입니다.
+    lut_policy: str = 'crop' # 'expand' | 'crop', crop is default
+    lut_crop_margin: float = 0.0
+    
 
 

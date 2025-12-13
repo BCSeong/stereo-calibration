@@ -16,9 +16,9 @@ from .analysis import (
     compute_trel_stats,
 )
 from ..calibrate_points.lut import generate_lut, save_maps
-from .config import TRANSPORT
 from .types import RuntimeState
 from .logger import get_logger
+from .config import TransportConfig
 
 
 def _flatten_intrinsics_std(std_intr: Optional[np.ndarray]) -> Dict[str, float | str]:
@@ -264,25 +264,23 @@ def save_lut_maps(
     output_dir: Path,
     calib_result,
     img_size: Tuple[int, int],
-    transport: List[float],
-    lut_policy: str = 'crop',
-    lut_crop_margin: float = 0.0,
-    verbose: bool = True
+    transport: List[float],    
+    TRANSPORT_CONFIG: TransportConfig = None,
+    verbose: bool = True    
 ) -> dict:
     """LUT 맵 생성 및 저장"""
     try:
         if verbose:
             logger = get_logger()
-            logger.info('[REPORTING] Generating LUT with policy: %s', lut_policy)
+            logger.info('[REPORTING] Generating LUT with policy: %s', TRANSPORT_CONFIG.lut_policy)
         
         # transport의 X 성분을 이용해 horizontal flip 결정
         trel_x_sign = transport[0]  # transport vector의 X 성분
         
         map_x, map_y, lut_info = generate_lut(
             calib_result.K, calib_result.dist, img_size,
-            lut_policy=lut_policy,
-            lut_crop_margin=lut_crop_margin,
-            trel_x_sign=trel_x_sign
+            trel_x_sign=trel_x_sign,            
+            TRANSPORT_CONFIG=TRANSPORT_CONFIG            
         )
         
         # LUT 저장
@@ -312,9 +310,8 @@ def save_all_results(
     frames: List = None,
     by_folder: Dict[str, List[int]] = None,
     save_error_plots_flag: bool = False,
-    lut_policy: str = 'crop',
-    lut_crop_margin: float = 0.0,
     verbose: bool = True,
+    TRANSPORT_CONFIG: TransportConfig = None,
     state: Optional[RuntimeState] = None
 ) -> dict:
     """모든 결과 저장 및 분석을 통합 관리하는 메인 함수
@@ -339,7 +336,7 @@ def save_all_results(
     """
     
     # Transport 및 Resolution 계산
-    transport = compute_transport_vector(calib_result.tvecs, by_folder)
+    transport = compute_transport_vector(calib_result.tvecs, by_folder, TRANSPORT_CONFIG.axis_sign)
     resolution_mm_per_px = compute_resolution_mm_per_px(calib_result.K, calib_result.tvecs)
 
     # RuntimeState 업데이트
@@ -348,7 +345,7 @@ def save_all_results(
         state.resolution_mm_per_px = resolution_mm_per_px
 
     # LUT 생성 및 저장
-    lut_info = save_lut_maps(output_dir, calib_result, img_size, transport, lut_policy, lut_crop_margin, verbose)
+    lut_info = save_lut_maps(output_dir, calib_result, img_size, transport, TRANSPORT_CONFIG, verbose)
     map_shape = lut_info['map_shape']
 
     # RuntimeState 업데이트 (LUT 정보)
@@ -379,7 +376,13 @@ def save_all_results(
         else:
             state.rms_reproj = 0.0
     
+    if save_error_plots_flag and by_folder is not None:        
+        rel_series_naive = compute_relative_transforms_without_rotation(calib_result.rvecs, calib_result.tvecs, by_folder)
+        plot_series_with_prefix(rel_series_naive, Path(output_dir) / 'debug', prefix='naive_tonly')
+    
     # Consistency report: translation_series 표준편차 vs extrinsics std 비교
+    # deprecated, instead use compute_relative_transforms_without_rotation
+    '''
     try:
         # 1) 카메라 j좌표계 기준 (기존)
         rel_series_cam = compute_relative_transforms(calib_result.rvecs, calib_result.tvecs, by_folder)
@@ -460,18 +463,20 @@ def save_all_results(
     except Exception as e:
         logger = get_logger()
         logger.exception('[ERR] Consistency report failed: %s', e)
-
     # Error plots 생성
     if save_error_plots_flag and by_folder is not None:
-        # 기존 카메라좌표계 시리즈
+        # 기존 카메라좌표계 시리즈        
         rel_series_cam = compute_relative_transforms(calib_result.rvecs, calib_result.tvecs, by_folder)
         plot_series_with_prefix(rel_series_cam, Path(output_dir) / 'debug', prefix='camera')
-        # 월드좌표계 시리즈
+        
+        # 월드좌표계 시리즈        
         rel_series_w = compute_relative_transforms_world(calib_result.rvecs, calib_result.tvecs, by_folder)
         plot_series_with_prefix(rel_series_w, Path(output_dir) / 'debug', prefix='world', apply_abs=True)
-        # 회전 무시(naive t-only)
+
+        # 회전 무시 버전(참고): 순수 tvec 차분 기반 std
         rel_series_naive = compute_relative_transforms_without_rotation(calib_result.rvecs, calib_result.tvecs, by_folder)
         plot_series_with_prefix(rel_series_naive, Path(output_dir) / 'debug', prefix='naive_tonly')
+    '''
     
 
     return lut_info

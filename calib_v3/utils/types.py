@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace, is_dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypeVar
 import numpy as np
 
-from .config import DetectorConfig, CandidateConfig, ScoringConfig, GridConfig, PatternConfig, DebugConfig
+from .config import BlobDetectorConfig, AffineCandidateConfig, ScoringConfig, GridConfig, DebugConfig
+
+T = TypeVar('T')
 
 
 @dataclass
@@ -51,29 +53,50 @@ class AppConfig:
     src: Path 
     dst: Path
     debug_dir: Path
+    skip: int = 10 # 프레임 중 일부만 사용하여 고속화 할 때 사용. 1이면 모든 프레임을 처리. 10이면 10번째 프레임마다 1회 처리.
+
     
-    # Blob detection parameters (CLI defaults)
-    min_area: float = 5.0
-    min_fill: float = 0.8
-    max_eccentricity: float = 0.85
-    max_area: Optional[float] = None
-    retrieval: str = 'list'  # 'SBD' | 'external' | 'list'
-    bin_threshold: Optional[float] = None
+    #########################################
+    # BlobDetectorConfig
+    #########################################    
+    # 아래 파라미터는 캘리브레이션 타겟에 따라 변경되어야 합니다.        
+    blob_dia_in_px = 37.5
+    min_area: float = 0.75 * 3.14* (blob_dia_in_px/2)**2 if blob_dia_in_px is not None else 300.0 #  - 지름 20px와 동등: π*(9^2) ≈ 300        
+    max_area: float = 4.00 * 3.14* (blob_dia_in_px/2)**2 if blob_dia_in_px is not None else 8000.0 #  - 지름 100px와 동등: π*(50^2) ≈ 8000
+
+    # 아래 파라미터는 조정이 필요할 수 있는 blob detector 파라미터입니다.
+    binarize_thd = None # if 0 or None, Otsu is used
+    retrieval: str = 'list' # 'SBD' | 'external' | 'list', list is default
+
     
-    # Pattern/camera scale
-    dot_pitch_mm: float = 0.5
-    
+    #########################################
+    # GridConfig
+    #########################################           
+    # 아래 파라미터는 캘리브레이션 타겟에 따라 반드시 변경되어야 합니다.        
+    dot_pitch_mm: float = 0.7 # blob 사이 거리 in mm
+    max_grid_size: int = 100 # grid 최대 크기가 N X N cells 인지. N 보다 max_grid_size 가 커야 안정적.
+
+
+    #########################################
+    # TransportConfig
+    #########################################      
     # LUT settings
-    lut_policy: str = 'crop'  # 'expand' | 'crop'
-    lut_crop_margin: float = 0.0
-    
+    # LUT 는 rectified 이미지를 생성하는 맵입니다.
+    # 이미지 외곽 등에서 품질이 저하된다면 crop_margin 증가로 stereo 연산에 사용되는 이미지 크기를 줄이는 것도 방법입니다.
+    lut_policy: str = 'crop'  # 'expand' | 'crop', crop is default
+    lut_crop_margin: float = 0.0 
+
+    #########################################
+    # 결과 저장 관련 파라미터
+    #########################################      
     # Runtime/control flags
     save_debug: bool = True
-    save_points: bool = True
-    save_error: bool = False
+    save_points: bool = False
+    save_error: bool = True
     verbose: bool = True
     
-    # Outlier removal
+    # obj point 와 img point 쌍으로 camera calibration 시 outlier 제거를 위한 임계값 설정.
+    # 현제 시스템에서는 사용하지 않는 것이 더 좋은 성능을 보임.
     remove_outliers: bool = False
     outlier_threshold: float = 1.0
     
@@ -86,63 +109,6 @@ class AppConfig:
     use_guess: bool = False
     K_guess: Optional[np.ndarray] = None
 
-
-@dataclass
-class DetectorParams:
-    """실제 검출에 사용되는 확정 파라미터(런타임 병합 결과).
-
-    - Optional, None이 없도록 값을 보유합니다.
-    - 기본은 `DetectorConfig`에서 가져오고, `AppConfig`가 제공하는 값으로 덮어씁니다.
-    """
-    # 공통
-    min_fill: float
-    min_area: float
-    max_area: float
-    max_eccentricity: float
-    retrieval: str
-    bin_threshold: Optional[float]
-
-    # FNN
-    fnn_filter: int
-    fnn_radius_beta: float
-    fnn_local_k: int
-    fnn_rollback_min_kept: int
-    fnn_rollback_fraction: float
-
-    # SBD 전용
-    sbd_min_dist_between_blobs: float
-    sbd_fixed_threshold: Optional[float] | str
-    sbd_blob_color: Optional[int]
-    sbd_min_repeatability: int
-    sbd_band_halfwidth: float
-    sbd_threshold_step: float
-
-
-def build_detector_params(app: AppConfig, det_cfg: DetectorConfig) -> DetectorParams:
-    """DetectorConfig 기본값과 AppConfig(사용자 입력)를 병합해 확정 파라미터 생성."""
-    # AppConfig에 없으면 DetectorConfig 기본값 사용
-    def pick(name: str):
-        return getattr(app, name) if hasattr(app, name) and getattr(app, name) is not None else getattr(det_cfg, name)
-
-    return DetectorParams(
-        min_fill=float(pick('min_fill')),
-        min_area=float(pick('min_area')),
-        max_area=float(pick('max_area')),
-        max_eccentricity=float(pick('max_eccentricity')),
-        retrieval=str(pick('retrieval')),
-        bin_threshold=getattr(app, 'bin_threshold', None),  # None이면 Otsu
-        fnn_filter=int(getattr(app, 'fnn_filter', det_cfg.fnn_filter)),
-        fnn_radius_beta=float(getattr(app, 'fnn_radius_beta', det_cfg.fnn_radius_beta)),
-        fnn_local_k=int(getattr(app, 'fnn_local_k', det_cfg.fnn_local_k)),
-        fnn_rollback_min_kept=int(getattr(app, 'fnn_rollback_min_kept', det_cfg.fnn_rollback_min_kept)),
-        fnn_rollback_fraction=float(getattr(app, 'fnn_rollback_fraction', det_cfg.fnn_rollback_fraction)),
-        sbd_min_dist_between_blobs=float(getattr(app, 'sbd_min_dist_between_blobs', det_cfg.sbd_min_dist_between_blobs)),
-        sbd_fixed_threshold=getattr(app, 'sbd_fixed_threshold', det_cfg.sbd_fixed_threshold),
-        sbd_blob_color=getattr(app, 'sbd_blob_color', det_cfg.sbd_blob_color),
-        sbd_min_repeatability=int(getattr(app, 'sbd_min_repeatability', det_cfg.sbd_min_repeatability)),
-        sbd_band_halfwidth=float(getattr(app, 'sbd_band_halfwidth', det_cfg.sbd_band_halfwidth)),
-        sbd_threshold_step=float(getattr(app, 'sbd_threshold_step', det_cfg.sbd_threshold_step)),
-    )
 
 
 @dataclass
@@ -170,31 +136,33 @@ class RuntimeState:
     cy_rect: Optional[float] = None
 
 
-@dataclass
-class UnifiedConfig:
-    """ 통합 설정 클래스 """
-    # Core modules
-    detector: DetectorConfig
-    candidate: CandidateConfig
-    scoring: ScoringConfig
-    grid: GridConfig
-    pattern: PatternConfig
-    debug: DebugConfig
+def merge_config_from_app(app: AppConfig, default_cfg: T) -> T:
+    """범용 Config 병합 함수: AppConfig에서 Config를 업데이트.
     
-    # Runtime settings
-    app: AppConfig
-    state: RuntimeState
+    Args:
+        app: AppConfig 인스턴스
+        default_cfg: 기본 Config 인스턴스 (frozen dataclass도 지원)
     
-    @classmethod
-    def create_default(cls) -> 'UnifiedConfig':
-        """기본 설정으로 UnifiedConfig 생성"""
-        return cls(
-            detector=DetectorConfig(),
-            candidate=CandidateConfig(),
-            scoring=ScoringConfig(),
-            grid=GridConfig(),
-            pattern=PatternConfig(),
-            debug=DebugConfig(),
-            app=AppConfig(src=Path('.'), dst=Path('.'), debug_dir=Path('.')),
-            state=RuntimeState()
-        )
+    Returns:
+        병합된 새로운 Config 인스턴스
+    """
+    if not is_dataclass(default_cfg):
+        raise TypeError('default_cfg must be a dataclass instance')
+    
+    # 기본값으로 시작
+    updates = {}
+    
+    # AppConfig에서 일치하는 필드 찾아서 업데이트
+    for f in fields(default_cfg):
+        if hasattr(app, f.name):
+            app_value = getattr(app, f.name)
+            # None이 아니면 업데이트
+            if app_value is not None:
+                updates[f.name] = app_value
+    
+    # replace를 사용하여 새로운 인스턴스 생성 (frozen dataclass도 지원)
+    if updates:
+        return replace(default_cfg, **updates)
+    else:
+        return default_cfg
+

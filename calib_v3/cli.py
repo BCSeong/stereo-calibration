@@ -16,34 +16,34 @@ def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description='calib_v3 simple blob scan')
     
     # positional --------------------------------------------------------------
-    ap.add_argument('src', type=str)
-    ap.add_argument('dst', type=str)
+    ap.add_argument('src', type=str, help='source directory')
+    ap.add_argument('dst', type=str, help='destination directory')
     
     # blob params -------------------------------------------------------------
-    ap.add_argument('-min_area', dest='min_area', type=float, default=default_config.min_area)
-    ap.add_argument('-min_fill', dest='min_fill', type=float, default=default_config.min_fill)
-    ap.add_argument('-max_ecc', dest='max_eccentricity', type=float, default=default_config.max_eccentricity)
-    ap.add_argument('-max_area', dest='max_area', type=float, default=default_config.max_area)
-    ap.add_argument('-retrieval', dest='retrieval', type=str, choices=['SBD','external','list'], default=default_config.retrieval)
-    ap.add_argument('-binarize_thd', dest='bin_threshold', type=float, default=default_config.bin_threshold)
+    ap.add_argument('-blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 37.5')
+    ap.add_argument('-min_area', dest='min_area', type=float, default=default_config.min_area, help='minimum area of blob, if None, it is calculated from blob_dia_in_px')
+    ap.add_argument('-max_area', dest='max_area', type=float, default=default_config.max_area, help='maximum area of blob, if None, it is calculated from blob_dia_in_px')
+    ap.add_argument('-retrieval', dest='retrieval', type=str, choices=['SBD','external','list'], default=default_config.retrieval, help='retrieval method, default is "list"')
+    ap.add_argument('-binarize_thd', dest='bin_threshold', type=float, default=default_config.binarize_thd, help='binarization threshold, default is "Otsu"')
     
     # pattern/camera scale ---------------------------------------------------------
-    ap.add_argument('-s', '--spacing', dest='dot_pitch_mm', type=float, default=default_config.dot_pitch_mm)
+    ap.add_argument('-s', '--spacing', dest='dot_pitch_mm', type=float, default=default_config.dot_pitch_mm, help='dot pitch in mm')
     
     # lut -----------------------------------------------------------
-    ap.add_argument('--lut_policy', dest='lut_policy', type=str, choices=['crop', 'expand'], default=default_config.lut_policy)
-    ap.add_argument('--lut_crop_margin', dest='lut_crop_margin', type=float, default=default_config.lut_crop_margin)
+    ap.add_argument('--lut_policy', dest='lut_policy', type=str, choices=['crop', 'expand'], default=default_config.lut_policy, help='lut policy, crop or expand')
+    ap.add_argument('--lut_crop_margin', dest='lut_crop_margin', type=float, default=default_config.lut_crop_margin, help='lut crop margin, 0.0 means no additional crop')
     
     # runtime/control ---------------------------------------------------------
-    ap.add_argument('--save_debug', dest='save_debug', action='store_true', default=default_config.save_debug)
-    ap.add_argument('--save_points', dest='save_points', action='store_true', default=default_config.save_points)    
-    ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error)    
+    ap.add_argument('--skip', dest='skip', type=int, default=default_config.skip, help='skip frames, 1 means all frames, 10 means every 10th frame')
+    ap.add_argument('--save_debug', dest='save_debug', action='store_true', default=default_config.save_debug, help='save debug images')
+    ap.add_argument('--save_points', dest='save_points', action='store_true', default=default_config.save_points, help='save points')    
+    ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error, help='save error')    
     
     # outlier removal ---------------------------------------------------------
-    ap.add_argument('--remove_outliers', dest='remove_outliers', action='store_true', default=default_config.remove_outliers)
-    ap.add_argument('--outlier_threshold', dest='outlier_threshold', type=float, default=default_config.outlier_threshold)
+    ap.add_argument('--remove_outliers', dest='remove_outliers', action='store_true', default=default_config.remove_outliers, help='remove outliers, default is False')
+    ap.add_argument('--outlier_threshold', dest='outlier_threshold', type=float, default=default_config.outlier_threshold, help='outlier threshold')
     
-    ap.add_argument('--verbose', dest='verbose', action='store_true', default=default_config.verbose)    
+    ap.add_argument('--verbose', dest='verbose', action='store_true', default=default_config.verbose, help='verbose output')    
     return ap
 
 

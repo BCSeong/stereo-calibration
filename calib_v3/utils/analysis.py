@@ -4,14 +4,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 import numpy as np
 import cv2
-
-from .config import TRANSPORT
 from .logger import get_logger
 
 
 def compute_transport_vector(
     tvecs: List[np.ndarray], 
-    by_folder: Dict[str, List[int]]
+    by_folder: Dict[str, List[int]],
+    transport_axis_sign: Tuple[float, float, float]
 ) -> List[float]:
     """Transport vector 계산 (calib_v2와 동일한 로직)
     
@@ -34,7 +33,7 @@ def compute_transport_vector(
         transport_vec = np.mean(np.vstack(trs), axis=0)
         n = np.linalg.norm(transport_vec)
         transport_vec = (transport_vec / n) if n > 0 else transport_vec
-        sign = np.array(TRANSPORT.axis_sign, dtype=np.float64)
+        sign = np.array(transport_axis_sign, dtype=np.float64)
         transport = (transport_vec * sign).tolist()
     else:
         transport = [0.0, 0.0, 0.0]
@@ -61,7 +60,7 @@ def compute_resolution_mm_per_px(
     resolution_mm_per_px = (mean_Z / fx) if fx > 0 else 0.0
     return float(resolution_mm_per_px)
 
-
+# deprecated, instead use compute_relative_transforms_without_rotation
 def compute_relative_transforms(
     rvecs: List[np.ndarray], 
     tvecs: List[np.ndarray], 
@@ -93,7 +92,7 @@ def compute_relative_transforms(
         by_folder_series[key] = seq
     return by_folder_series
 
-
+# deprecated, instead use compute_relative_transforms_without_rotation
 def compute_relative_transforms_world(
     rvecs: List[np.ndarray],
     tvecs: List[np.ndarray],

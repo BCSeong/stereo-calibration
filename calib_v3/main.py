@@ -9,14 +9,13 @@ import cv2
 from typing import List
 
 from .cli import build_argparser, update_dataclass_from_namespace
-from .get_points.three_dots import ThreeDotDetector, GridPreset
-from .utils.types import DetectorParams, build_detector_params
+from .get_points.three_dots import ThreeDotDetector
 from .utils.logger import init_logger, get_logger
 from .calibrate_points.calibrator import calibrate_shared
 from .utils.reporting import save_all_results
 from .utils.types import FrameData, AppConfig, RuntimeState
 from .debug.visuals import save_detection_overlay, save_grid_report, save_reprojection_report
-from .utils.config import DETECTOR
+from .utils.config import BlobDetectorConfig, GridConfig, TransportConfig, AffineCandidateConfig, ScoringConfig
 
 
 def _rerun_with_debug(config: AppConfig, frames: List[FrameData], state: RuntimeState, by_folder: dict) -> RuntimeState:
@@ -110,28 +109,34 @@ def run(argv=None) -> RuntimeState:
     
     # 로거 초기화 (파일: dst/calibration.log, 콘솔: INFO 이상)
     log_path = Path(config.dst) / 'calibration.log'
-    logger = init_logger(log_path)
+    init_logger(log_path)
+    logger = get_logger()
     logger.info('[ENTER] main.run')
 
     # 디렉터리 생성
     config.debug_dir.mkdir(parents=True, exist_ok=True)
     
-    # 검출 파라미터 병합 생성
-    det_params: DetectorParams = build_detector_params(config, DETECTOR)
+    # 검출 파라미터 병합 생성 (AppConfig에서 덮어씌우기)
+    from .utils.types import merge_config_from_app
+    BLOB_CONFIG: BlobDetectorConfig = merge_config_from_app(config, BlobDetectorConfig())
+    GRID_CONFIG: GridConfig = merge_config_from_app(config, GridConfig())
+    AFFINE_CANDIDATE_CONFIG: AffineCandidateConfig = merge_config_from_app(config, AffineCandidateConfig())
+    SCORE_CONFIG: ScoringConfig = merge_config_from_app(config, ScoringConfig())
+    TRANSPORT_CONFIG: TransportConfig = merge_config_from_app(config, TransportConfig())
 
-    # 이미지 재귀 수집
-    def iter_images_recursive(root):
+    # 이미지 재귀 수집, 모든 이미지 처리를 하지 않고 일부 이미지만 처리하여 속도를 빠르게 할 수도 있음.
+    # 예) 매 100번째 이미지만 처리하려면:
+    def iter_images_recursive(root, step=1):
         root_path = Path(root)  # str을 Path로 변환
-        for p in sorted(root_path.rglob('*')):
+        for i, p in enumerate(sorted(root_path.rglob('*'))):
             if p.is_file() and (p.suffix.lower() in ('.bmp', '.png')):
-                yield p
+                if i % step == 0:
+                    yield p
 
     if config.verbose:
-        logger.info('[CONFIG] %s', {'src': str(config.src), 'dst': str(config.dst), 'blob': {'min_area': float(det_params.min_area), 'min_fill': float(det_params.min_fill), 'max_ecc': float(det_params.max_eccentricity)}})
+        logger.info('[CONFIG] %s', {'src': str(config.src), 'dst': str(config.dst), 'blob': {'min_area': float(BLOB_CONFIG.min_area), 'min_fill': float(BLOB_CONFIG.min_fill), 'max_ecc': float(BLOB_CONFIG.max_eccentricity)}})
 
-    # GridPreset with dot_pitch_mm
-    grid_preset = GridPreset(dot_pitch_mm=config.dot_pitch_mm)
-    det = ThreeDotDetector(det_params, grid_preset, config.debug_dir, debug_sample_rate=config.debug_sample_rate, debug_shard_size=config.debug_shard_size)
+    det = ThreeDotDetector(BLOB_CONFIG, GRID_CONFIG, AFFINE_CANDIDATE_CONFIG, SCORE_CONFIG, config.debug_dir, debug_sample_rate=config.debug_sample_rate, debug_shard_size=config.debug_shard_size)
 
     # 디버그 및 산출물 저장 위치 정의
     out_spool = config.debug_dir / 'spool'           # Points 저장용 (항상 생성)
@@ -166,8 +171,10 @@ def run(argv=None) -> RuntimeState:
     # ------------------------------------------------------------------------------------------
     # Blob scan
     # ------------------------------------------------------------------------------------------
-    logger.info('[ENTER] Blob scan start, images=%d', len(list(iter_images_recursive(config.src))))
-    for img_path in iter_images_recursive(config.src):
+    logger.info('[INFO] total frames=%d', len(list(iter_images_recursive(config.src))))
+    logger.info('[INFO] target frames=%d', len(list(iter_images_recursive(config.src, step = config.skip))))
+    logger.info('[ENTER] Blob scan start')
+    for img_path in iter_images_recursive(config.src, step = config.skip):
         gray = None
         pts = None
         diam = None
@@ -234,8 +241,8 @@ def run(argv=None) -> RuntimeState:
                     # 격자 좌표를 실제 월드 좌표로 변환 (dot_pitch_mm 사용)
                     uv = np.array(grid_keys, dtype=np.int32)
                     object_pts = np.zeros((len(uv), 3), dtype=np.float32)
-                    object_pts[:, 0] = uv[:, 0] * float(grid_preset.dot_pitch_mm)  # X: mm
-                    object_pts[:, 1] = uv[:, 1] * float(grid_preset.dot_pitch_mm)  # Y: mm
+                    object_pts[:, 0] = uv[:, 0] * float(GRID_CONFIG.dot_pitch_mm)  # X: mm
+                    object_pts[:, 1] = uv[:, 1] * float(GRID_CONFIG.dot_pitch_mm)  # Y: mm
                     object_pts[:, 2] = 0.0  # Z: mm (평면)
                     
                     # FrameData 구조로 저장
@@ -278,7 +285,7 @@ def run(argv=None) -> RuntimeState:
                 if config.verbose:
                     logger.info('[INFO] Saved %d frames to %s', len(frames), str(npz_path))
             
-            logger.info('[LEAVE] Blob scan done: %s', {'processed': processed, 'failed': failed, 'dst': str(config.dst)})
+            logger.info('[LEAVE] Blob and Grid assignment done: %s', {'processed': processed, 'failed': failed, 'dst': str(config.dst)})
     
     # ------------------------------------------------------------------------------------------
     # Calibration
@@ -335,14 +342,14 @@ def run(argv=None) -> RuntimeState:
             for new_idx, old_idx in enumerate(kept):
                 folder_name = frames[old_idx].image_path.parent.name
                 by_folder.setdefault(folder_name, []).append(new_idx)
+
             lut_info = save_all_results(
                 config.dst, calib_result, frame_names, 
                 object_points_list, image_points_list, state.image_size,
                 frames=frames,
                 by_folder=by_folder,
                 save_error_plots_flag=config.save_error,
-                lut_policy=config.lut_policy,
-                lut_crop_margin=config.lut_crop_margin,
+                TRANSPORT_CONFIG=TRANSPORT_CONFIG,
                 verbose=config.verbose,
                 state=state  # RuntimeState 전달
             )

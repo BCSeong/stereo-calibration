@@ -5,7 +5,8 @@ from typing import Dict, Tuple, List, Optional
 
 import cv2
 import numpy as np
-from ..utils.config import DEBUG
+from ..utils.config import DebugConfig
+DEBUG = DebugConfig()
 
 
 def save_grid_report(
@@ -189,8 +190,8 @@ def save_detection_overlay(
             p_tl = (int(round(pts_xy[i_tl][0])), int(round(pts_xy[i_tl][1])))
             p_bl = (int(round(pts_xy[i_bl][0])), int(round(pts_xy[i_bl][1])))
             p_br = (int(round(pts_xy[i_br][0])), int(round(pts_xy[i_br][1])))
-            cv2.line(vis, p_tl, p_bl, (0, 0, 255), DEBUG.lline_thickness, cv2.LINE_AA)
-            cv2.line(vis, p_bl, p_br, (0, 0, 255), DEBUG.lline_thickness, cv2.LINE_AA)
+            cv2.line(vis, p_tl, p_bl, (0, 0, 255), DEBUG.line_thickness, cv2.LINE_AA)
+            cv2.line(vis, p_bl, p_br, (0, 0, 255), DEBUG.line_thickness, cv2.LINE_AA)
         except Exception:
             pass
     cv2.imwrite(str(out_path), vis)
