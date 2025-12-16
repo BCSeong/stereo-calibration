@@ -41,17 +41,12 @@ class ThreeDotDetector:
         AFFINE_CANDIDATE_CONFIG: AffineCandidateConfig,
         SCORE_CONFIG: ScoringConfig,
         debug_dir: Path,
-        debug_sample_rate: int = 0,
-        debug_shard_size: int = 0,
     ):
         self.blob_config = BLOB_CONFIG
         self.grid_config = GRID_CONFIG
         self.candidate_config = AFFINE_CANDIDATE_CONFIG
         self.score_config = SCORE_CONFIG
         self.debug_dir = debug_dir
-        self.debug_sample_rate = int(debug_sample_rate or 0)
-        self.debug_shard_size = int(debug_shard_size or 0)
-        self._debug_counter = 0
         self._last_binarized_image: Optional[np.ndarray] = None
 
 
@@ -366,7 +361,7 @@ class ThreeDotDetector:
         ]:
         """모든 후보에 대해 6개 아핀 평가 후 최적 Tc/center/chosen_triplet/P/nn24 선택."""
         if not cands:
-            get_logger().error('[FAIL] cands is None')
+            get_logger().error('[WARN] cands is None')
             return None, None, None, None, None, None, 0
         best = None
         best_P = None
@@ -397,7 +392,7 @@ class ThreeDotDetector:
         '''
         # center_offset 검사 후 적절한 Tc 선택
         if best is None:
-            get_logger().error('[FAIL] Tc: best is None')
+            get_logger().error('[WARN] Tc: best is None')
             return None, None, None, None, None, None, examined
         
         # 유효한 점수만 필터링
@@ -405,7 +400,7 @@ class ThreeDotDetector:
                        if score is not None and np.isfinite(score[0])]
         
         if not valid_scores:
-            get_logger().error('[FAIL] No valid scores found')
+            get_logger().error('[WARN] No valid scores found')
             return None, None, None, None, None, None, examined
         
         # 점수 기준으로 정렬 (낮은 점수가 좋음)
@@ -428,7 +423,7 @@ class ThreeDotDetector:
                     pass
         
         if selected_tc is None:
-            get_logger().error('[FAIL] No Tc found with center_offset close to (0,0)')
+            get_logger().error('[WARN] No Tc found with center_offset close to (0,0)')
             return None, None, None, None, None, None, examined
         
         score_tuple, cidx, triplet, Tc, nn24, best_P = selected_tc
@@ -522,7 +517,7 @@ class ThreeDotDetector:
         if initial_grid is not None:
             assigned = initial_grid.copy()        
         else:
-            get_logger().error('[FAIL] initial_grid is None')
+            get_logger().error('[WARN] initial_grid is None')
             return {}
 
         explored: set[Tuple[int, int]] = set()
@@ -609,7 +604,6 @@ class ThreeDotDetector:
         # Debug 정보 추출
         sub = image_path.parent.name
         stem = image_path.stem              
-        self._debug_counter += 1
         
         # step 1: blob detection
         pts, diam, kps = self.detect_blobs(gray)
@@ -632,7 +626,7 @@ class ThreeDotDetector:
             #     out_png = out_vis_dir / f"{sub}_{stem}_blobs.png"
             #     save_detection_overlay(gray, pts, None, out_png, None, None)
 
-            get_logger().error('[FAIL] Central element search failed: %s', str(image_path))             
+            get_logger().error('[WARN] Central element search failed: %s', str(image_path))             
             return DetectionResult(
                 Tc=None,
                 center_index=None,

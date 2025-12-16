@@ -40,8 +40,9 @@ python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_error
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M --verbose
 
 # 도트 간격 설정 (um 단위)
-python -m calib_v3.main sample_imgs_KYICI_4M output_4M -s 500
-python -m calib_v3.main sample_imgs_25M_lota_unit1 output_25M -s 700
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M_KY -dot_pitch_um 500 -blob_dia_in_px 25
+python -m calib_v3.main sample_imgs_16M_lota_unit1 output_16M_lota_unit2_KY -dot_pitch_um 700 -blob_dia_in_px 35
+python -m calib_v3.main sample_imgs_16M_lota_unit2 output_16M_lota_unit2_KY -dot_pitch_um 700 -blob_dia_in_px 35
 
 
 

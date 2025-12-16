@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from calib_v3.utils.types import FrameData
 import traceback
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from pprint import pprint
 import numpy as np
@@ -12,19 +13,19 @@ from .cli import build_argparser, update_dataclass_from_namespace
 from .get_points.three_dots import ThreeDotDetector
 from .utils.logger import init_logger, get_logger
 from .calibrate_points.calibrator import calibrate_shared
-from .utils.reporting import save_all_results
-from .utils.types import FrameData, AppConfig, RuntimeState
+from .utils.reporting import convert_and_update_runtime_state, save_calibration_results_from_runtime_state
+from .utils.types import FrameData, AppConfig, RuntimeState, CalibResult, update_runtime_state_by_kept_indices
 from .debug.visuals import save_detection_overlay, save_grid_report, save_reprojection_report
 from .utils.config import BlobDetectorConfig, GridConfig, TransportConfig, AffineCandidateConfig, ScoringConfig
 
 
-def _rerun_with_debug(config: AppConfig, frames: List[FrameData], state: RuntimeState, by_folder: dict) -> RuntimeState:
+def _rerun_with_debug(config: AppConfig, TRANSPORT_CONFIG: TransportConfig, STATE: RuntimeState) -> RuntimeState:
     """Debug 옵션으로 재실행
     
     Args:
         config: 앱 설정
         frames: 프레임 데이터 리스트
-        state: 현재 실행 상태
+        STATE: 현재 실행 상태
         by_folder: 폴더별 프레임 인덱스 매핑
         
     Returns:
@@ -33,64 +34,38 @@ def _rerun_with_debug(config: AppConfig, frames: List[FrameData], state: Runtime
     try:
         if config.verbose:
             print("[INFO] Re-running calibration with debug enabled...")
-        
-        # FrameData에서 points 추출
-        object_points_list = [f.object_points for f in frames]
-        image_points_list = [f.image_points for f in frames]
-        
+                
         # Outlier 제거 권장 메시지
         if not config.remove_outliers:
             print("[RECOMMENDATION] Consider using --remove_outliers flag to automatically remove bad frames")
             print("Example: python -m calib_v3.main --remove_outliers --outlier_threshold 2.0")
         
         # 재캘리브레이션 (outlier 제거 포함)
-        calib_result = calibrate_shared(
-            object_points_list, image_points_list, state.image_size,
+        STATE.CALIB_RESULT = calibrate_shared(
+            RuntimeState=STATE,
             remove_outliers=True,  # 강제로 outlier 제거 활성화
-            outlier_threshold=config.outlier_threshold
+            outlier_threshold=config.outlier_threshold,
+            use_guess=config.use_guess,
+            K_guess=config.K_guess
         )
         
-        # RuntimeState 업데이트
-        state.K = calib_result.K
-        state.dist = calib_result.dist
-        state.rvecs = calib_result.rvecs
-        state.tvecs = calib_result.tvecs
-        
+       
         # 결과 재저장 및 상태 업데이트
-        frame_names = [f"{f.image_path.parent.name}/{f.image_path.name}" for f in frames]
-        lut_info = save_all_results(
-            config.dst, calib_result, frame_names, 
-            object_points_list, image_points_list, state.image_size,
-            frames=frames,
-            by_folder=by_folder,
+        frame_names = [f"{f.image_path.parent.name}/{f.image_path.name}" for f in STATE.FRAME_DATA_LIST]
+        STATE = convert_and_update_runtime_state(
+            RuntimeState=STATE,
+            TRANSPORT_CONFIG=TRANSPORT_CONFIG,
+            output_dir=config.dst,
             save_error_plots_flag=config.save_error,
-            lut_policy=config.lut_policy,
-            lut_crop_margin=config.lut_crop_margin,
-            verbose=config.verbose,
-            state=state  # RuntimeState 전달
+            verbose=config.verbose               
         )
         
-        # LUT 정보로 RuntimeState 업데이트
-        if lut_info:
-            state.map_shape = lut_info.get('map_shape')
-            state.did_flip = lut_info.get('did_flip', False)
-            state.crop_bbox = lut_info.get('crop_bbox')
-            state.cx_rect = lut_info.get('cx_rect')
-            state.cy_rect = lut_info.get('cy_rect')
-            state.min_xy = lut_info.get('min_xy')
-            state.max_xy = lut_info.get('max_xy')
-        
-        if state.rms_reproj <= 0.5:
-            print("[SUCCESS] Re-calibration completed successfully with debug enabled\n")
-        else:
-            print("[FAIL] Re-calibration still failed. Please check debug results and adjust parameters.")
-        
-        return state
+        return STATE
             
     except Exception as e:
         print(f"[ERR] Re-run failed: {e}")
         traceback.print_exc()
-        return state
+        return STATE
 
 
 def run(argv=None) -> RuntimeState:
@@ -101,11 +76,18 @@ def run(argv=None) -> RuntimeState:
     config = AppConfig(
         src=Path(args.src),
         dst=Path(args.dst),
-        debug_dir=Path(args.dst) / 'debug'
+        debug_dir=Path(args.dst) / 'report'
     )
+    if args.blob_dia_in_px is not None and args.min_area is None and args.max_area is None:
+        config.max_area = 4.00 * 3.14* (args.blob_dia_in_px/2)**2
+        config.min_area = 0.75 * 3.14* (args.blob_dia_in_px/2)**2
     
     # CLI 인자로 AppConfig 업데이트
     update_dataclass_from_namespace(config, args)
+
+    print(f"config.blob_dia_in_px: {config.blob_dia_in_px}")
+    print(f"config.dot_pitch_um: {config.dot_pitch_um}")
+    
     
     # 로거 초기화 (파일: dst/calibration.log, 콘솔: INFO 이상)
     log_path = Path(config.dst) / 'calibration.log'
@@ -115,7 +97,8 @@ def run(argv=None) -> RuntimeState:
 
     # 디렉터리 생성
     config.debug_dir.mkdir(parents=True, exist_ok=True)
-    
+
+
     # 검출 파라미터 병합 생성 (AppConfig에서 덮어씌우기)
     from .utils.types import merge_config_from_app
     BLOB_CONFIG: BlobDetectorConfig = merge_config_from_app(config, BlobDetectorConfig())
@@ -135,10 +118,21 @@ def run(argv=None) -> RuntimeState:
         for i, p in enumerate(image_files):
             if i % step == 0:
                 yield p
-    if config.verbose:
-        logger.info('[CONFIG] %s', {'src': str(config.src), 'dst': str(config.dst), 'blob': {'min_area': float(BLOB_CONFIG.min_area), 'min_fill': float(BLOB_CONFIG.min_fill), 'max_ecc': float(BLOB_CONFIG.max_eccentricity)}})
 
-    det = ThreeDotDetector(BLOB_CONFIG, GRID_CONFIG, AFFINE_CANDIDATE_CONFIG, SCORE_CONFIG, config.debug_dir, debug_sample_rate=config.debug_sample_rate, debug_shard_size=config.debug_shard_size)
+    if config.verbose:
+        logger.info('[CONFIG] %s', {'src': str(config.src),
+         'dst': str(config.dst),
+         'blob_detector': {
+            'dot_pitch_um': float(config.dot_pitch_um),            
+            'blob_dia_in_px': float(BLOB_CONFIG.blob_dia_in_px),            
+            'retrieval': str(BLOB_CONFIG.retrieval),
+            'bin_threshold': BLOB_CONFIG.bin_threshold, # None or float
+            'min_area': float(BLOB_CONFIG.min_area),
+            'max_area': float(BLOB_CONFIG.max_area),
+            'min_fill': float(BLOB_CONFIG.min_fill),
+            'max_eccentricity': float(BLOB_CONFIG.max_eccentricity)}})
+
+    det = ThreeDotDetector(BLOB_CONFIG, GRID_CONFIG, AFFINE_CANDIDATE_CONFIG, SCORE_CONFIG, config.debug_dir)
 
     # 디버그 및 산출물 저장 위치 정의
     out_spool = config.debug_dir / 'spool'           # Points 저장용 (항상 생성)
@@ -163,19 +157,20 @@ def run(argv=None) -> RuntimeState:
     processed = 0
     failed = 0
     # RuntimeState 초기화
-    state = RuntimeState()
+    STATE = RuntimeState()
     
     # 캘리브레이션용 points 수집 (types.py 구조 사용)
-    frames: List[FrameData] = []
-    debug_counter = 0  # main에서 통합 관리
+    STATE.FRAME_DATA_LIST: List[FrameData] = []
     import gc    
     
     # ------------------------------------------------------------------------------------------
     # Blob scan
     # ------------------------------------------------------------------------------------------
-    logger.info('[INFO] total frames=%d', len(list(iter_images_recursive(config.src))))
-    logger.info('[INFO] target frames=%d', len(list(iter_images_recursive(config.src, step = config.skip))))
-    logger.info('[ENTER] Blob scan start')
+    total_frames = len(list(iter_images_recursive(config.src)))
+    target_frames = len(list(iter_images_recursive(config.src, step = config.skip)))
+    logger.info('[INFO] total frames=%d (skip=%d)', total_frames, config.skip)
+    logger.info('[INFO] target frames=%d', target_frames)
+    logger.info('[ENTER] Blob scan start with %d frames', target_frames)
     for img_path in iter_images_recursive(config.src, step = config.skip):
         gray = None
         pts = None
@@ -190,12 +185,8 @@ def run(argv=None) -> RuntimeState:
             pts = res.points_xy
             diam = res.diameters
             
-            # should_save 로직을 main에서 통합 관리
-            debug_counter += 1
-            should_save = config.save_debug # 필요시 N 개마다 디버그 저장 기능 추가
-            
             # DEBUG 시각화 처리 
-            if should_save:
+            if config.save_debug:
                 # 이미지의 상대 경로 구조 생성 (src 기준)
                 try:
                     # src 경로를 기준으로 상대 경로 계산
@@ -235,7 +226,7 @@ def run(argv=None) -> RuntimeState:
                     out_png = debug_fails_dir / f"{debug_filename}_blobs.png"
                     save_detection_overlay(gray, pts, None, out_png, None, None)
             
-            # 성공한 프레임의 points 수집 (grid_assign이 비어있지 않으면 성공)
+            # RuntimeState 업데이트, 성공한 프레임의 points 수집 (grid_assign이 비어있지 않으면 성공)
             if res.grid_assign and len(res.grid_assign) > 0:
                 # object points 생성 (실제 dot_pitch_um 사용)
                 grid_keys = list(res.grid_assign.keys())
@@ -253,121 +244,82 @@ def run(argv=None) -> RuntimeState:
                         image_points=pts[list(res.grid_assign.values())],
                         object_points=object_pts
                     )
-                    frames.append(frame_data)
+                    STATE.FRAME_DATA_LIST.append(frame_data) # RuntimeState 업데이트
                     
-                    # 이미지 크기 저장 (첫 번째 성공 프레임에서)
-                    if state.image_size is None:
-                        state.image_size = (gray.shape[1], gray.shape[0])  # (width, height)
+                    # RuntimeState 업데이트, 이미지 크기 저장 (첫 번째 성공 프레임에서)
+                    if STATE.image_size is None:
+                        STATE.image_size = (gray.shape[0], gray.shape[1])  # (height, width)
             
-
             processed += 1
+
         except Exception as e:
             logger.exception('[EXCEPTION] run_on_image failed: %s', e)
             failed += 1
+
         finally:
             # 메모리 해제
-            try:
-                del gray, pts, diam
-            except Exception:
-                logger.warning('[WARN] del gray, pts, diam failed')
-                pass
+            del gray, pts, diam
             gc.collect()
-
-            # save_points 옵션이 활성화된 경우 전체 points를 하나의 NPZ로 저장
-            if config.save_points and frames:
-                npz_path = out_spool / 'all_points.npz'
-                # inhomogeneous shape 문제 해결: pickle 방식으로 저장
-                import pickle
-                data = {
-                    'frames': frames,
-                    'num_frames': len(frames)
-                }
-                with open(str(npz_path).replace('.npz', '.pkl'), 'wb') as f:
-                    pickle.dump(data, f)
-                if config.verbose:
-                    logger.info('[INFO] Saved %d frames to %s', len(frames), str(npz_path))
+            logger.info('[INFO] Blob and Grid assignment done: processed=%d/%d, failed=%d, dst=%s', processed, target_frames, failed, str(config.dst))
             
-            logger.info('[LEAVE] Blob and Grid assignment done: %s', {'processed': processed, 'failed': failed, 'dst': str(config.dst)})
+
+
+        # save_points 옵션이 활성화된 경우 전체 points를 하나의 NPZ로 저장
+        # 현재 저장한 뒤 debugging 하는 프로세스 없음 (삭제 무관)
+        if config.save_points and STATE.FRAME_DATA_LIST:
+            npz_path = out_spool / 'all_points.npz'
+            import pickle
+            data = {
+                'frames': STATE.FRAME_DATA_LIST,
+                'num_frames': len(STATE.FRAME_DATA_LIST)
+            }
+            with open(str(npz_path).replace('.npz', '.pkl'), 'wb') as f:
+                pickle.dump(data, f)
+            if config.verbose:
+                logger.info('[INFO] Saved %d frames to %s', len(STATE.FRAME_DATA_LIST), str(npz_path))
+        
+        
     
     # ------------------------------------------------------------------------------------------
     # Calibration
     # ------------------------------------------------------------------------------------------
     # 캘리브레이션 수행
-    state.num_frames = len(frames)
-    logger.info('[ENTER] Calibration start with %d frames', state.num_frames)
-    if frames and state.image_size:
+    STATE.num_frames = len(STATE.FRAME_DATA_LIST)
+    logger.info('[ENTER] Calibration start with %d frames', STATE.num_frames)
+
+    if STATE.FRAME_DATA_LIST and STATE.image_size:
         try:
             if args.verbose:
-                logger.info('[INFO] Starting calibration with %d frames', len(frames))
+                logger.info('[INFO] Starting calibration with %d frames', len(STATE.FRAME_DATA_LIST))
             
-            # FrameData에서 points 추출
-            object_points_list = [f.object_points for f in frames]
-            image_points_list = [f.image_points for f in frames]
-            
+            # CalibResult를 RuntimeState에 저장
             logger.info('[BRANCH] calibrate_shared called (remove_outliers=%s)', str(config.remove_outliers))
-            calib_result = calibrate_shared(
-                object_points_list, image_points_list, state.image_size,
+            STATE.CALIB_RESULT = calibrate_shared(
+                RuntimeState=STATE,
                 remove_outliers=config.remove_outliers,
                 outlier_threshold=config.outlier_threshold
             )
             
-            # CalibResult를 RuntimeState에 저장
-            state.K = calib_result.K
-            state.dist = calib_result.dist
-            state.rvecs = calib_result.rvecs
-            state.tvecs = calib_result.tvecs
-            
-            # 폴더별 프레임 인덱스 매핑 생성 (간단한 구현)
-            by_folder = {}
-            for i, frame in enumerate(frames):
-                folder_name = frame.image_path.parent.name
-                if folder_name not in by_folder:
-                    by_folder[folder_name] = []
-                by_folder[folder_name].append(i)
-            
-            # 통합된 결과 저장 및 분석 (reporting 모듈에서 모든 처리)
-            # kept_indices를 기반으로 모든 리스트(by_folder, frame_names, points)를 정렬/필터
-            kept = calib_result.kept_indices if getattr(calib_result, 'kept_indices', None) else list(range(len(frames)))
-            frame_names_all = [f"{f.image_path.parent.name}/{f.image_path.name}" for f in frames]
-            frame_names = [frame_names_all[i] for i in kept]
-            object_points_list = [object_points_list[i] for i in kept]
-            image_points_list = [image_points_list[i] for i in kept]
-            # by_folder 필터링
-            kept_set = set(kept)
-            by_folder = {}
-            for i, frame in enumerate(frames):
-                if i in kept_set:
-                    folder_name = frame.image_path.parent.name
-                    by_folder.setdefault(folder_name, []).append(len(by_folder.get(folder_name, [])) + (0))
-            # 위 by_folder는 새 인덱스가 아닌 누적 길이로 잘못될 수 있어, 실제 kept 인덱스의 상대 인덱스로 재구성
-            by_folder = {}
-            for new_idx, old_idx in enumerate(kept):
-                folder_name = frames[old_idx].image_path.parent.name
-                by_folder.setdefault(folder_name, []).append(new_idx)
+            # kept_indices를 기반으로 FRAME_DATA_LIST를 정렬/필터링
+            # kept_indices 는 outlier 제거 후 남은 프레임 인덱스 리스트임.
+            STATE = update_runtime_state_by_kept_indices(
+                RuntimeState=STATE,
+                kept_indices=STATE.CALIB_RESULT.kept_indices
+            )
+                         
 
-            lut_info = save_all_results(
-                config.dst, calib_result, frame_names, 
-                object_points_list, image_points_list, state.image_size,
-                frames=frames,
-                by_folder=by_folder,
-                save_error_plots_flag=config.save_error,
-                TRANSPORT_CONFIG=TRANSPORT_CONFIG,
-                verbose=config.verbose,
-                state=state  # RuntimeState 전달
+            # 결과 변환 및 저장
+            STATE = convert_and_update_runtime_state(
+                RuntimeState=STATE,
+                TRANSPORT_CONFIG=TRANSPORT_CONFIG,                
+                verbose=config.verbose                
             )
             
-            # LUT 정보로 RuntimeState 업데이트
-            if lut_info:
-                state.map_shape = lut_info.get('map_shape')
-                state.did_flip = lut_info.get('did_flip', False)
-                state.crop_bbox = lut_info.get('crop_bbox')
-                state.cx_rect = lut_info.get('cx_rect')
-                state.cy_rect = lut_info.get('cy_rect')
-                state.min_xy = lut_info.get('min_xy')
-                state.max_xy = lut_info.get('max_xy')
-            
-            # Reprojection error 체크 및 디버그 가이드
-            calibration_success = (state.rms_reproj <= 0.5)
+            # Reprojection error 체크
+            calibration_success = (STATE.reprojected <= 0.5)
+            logger.info('[INFO] Reprojection error: %s', str(STATE.reprojected))
+
+            # Reprojection error 체크 실패 시 remove_outliers=True 재실행
             if not calibration_success:
                 if config.save_debug:
                     logger.info('[GUIDE] Check debug results:')
@@ -382,48 +334,61 @@ def run(argv=None) -> RuntimeState:
                         # Debug 옵션 활성화하여 재실행
                         config.save_debug = True
                         # 재실행 로직
-                        state = _rerun_with_debug(config, frames, state, by_folder)
-                        return state
+                        STATE = _rerun_with_debug(config, TRANSPORT_CONFIG, STATE)
+                        calibration_success = (STATE.reprojected <= 0.5)
+                        logger.info('[INFO] Reprojection error with outlier removal: %s', str(STATE.reprojected))
+                        if calibration_success:
+                            print("[SUCCESS] Re-calibration completed successfully with debug enabled\n")
+                            
+                        else:
+                            print("[FAIL] Re-calibration still failed. Please check debug results and adjust parameters.")                            
                     else:
-                        logger.info('[LEAVE] Exiting without debug information.')
-                        return state
+                        logger.info('[LEAVE] Exiting without re-calibration(remove_outliers=True).')
+
+            # 결과 저장 (실패하더라도 저장 및 디버깅)
+            save_calibration_results_from_runtime_state(
+                RuntimeState=STATE,
+                output_dir=config.dst,
+                save_error_plots_flag=config.save_error,                
+                verbose=config.verbose
+            )
+                
             # DEBUG 재투영 리포트 생성
-            if should_save:
-                try:
-                    if config.verbose:
-                        logger.info('[INFO] Generating reprojection reports for %d kept frames', len(kept))
+            if config.save_reproj_png:
+                if config.verbose:
+                    logger.info('[INFO] Generating reprojection reports for %d kept frames', len(STATE.CALIB_RESULT.kept_indices))
+                
+                for new_i, old_i in enumerate(STATE.CALIB_RESULT.kept_indices):
+                    frame = STATE.FRAME_DATA_LIST[old_i]
+                    # 이미지의 상대 경로 구조 생성 (src 기준)
+                    try:
+                        rel_path = frame.image_path.relative_to(config.src)
+                        debug_subdir = rel_path.parent
+                        debug_filename = rel_path.stem
+                    except ValueError:
+                        debug_subdir = frame.image_path.parent.name
+                        debug_filename = frame.image_path.stem
                     
-                    for new_i, old_i in enumerate(kept):
-                        frame = frames[old_i]
-                        # 이미지의 상대 경로 구조 생성 (src 기준)
-                        try:
-                            rel_path = frame.image_path.relative_to(config.src)
-                            debug_subdir = rel_path.parent
-                            debug_filename = rel_path.stem
-                        except ValueError:
-                            debug_subdir = frame.image_path.parent.name
-                            debug_filename = frame.image_path.stem
-                        
-                        # 재투영 리포트 서브디렉터리 생성
-                        reproj_subdir = out_reproj / debug_subdir
-                        reproj_subdir.mkdir(parents=True, exist_ok=True)
-                        
-                        # 이미지 로드 (재투영 리포트용)
+                    # 재투영 리포트 서브디렉터리 생성
+                    reproj_subdir = out_reproj / debug_subdir
+                    reproj_subdir.mkdir(parents=True, exist_ok=True)
+                    
+                    # 이미지 로드 (재투영 리포트용)
+                    if config.save_reproj_png:
                         gray = cv2.imread(str(frame.image_path), cv2.IMREAD_GRAYSCALE)
                         if gray is not None:
                             reproj_path = reproj_subdir / f"{debug_filename}_reproj.png"
                             save_reprojection_report(
-                                frame.image_path, gray, image_points_list[new_i], object_points_list[new_i],
-                                calib_result.K, calib_result.dist,
-                                calib_result.rvecs[new_i], calib_result.tvecs[new_i],
+                                frame.image_path, gray, STATE.image_points_list[new_i], STATE.object_points_list[new_i],
+                                STATE.CALIB_RESULT.camera_matrix, STATE.CALIB_RESULT.distortion,
+                                STATE.CALIB_RESULT.rvecs[new_i], STATE.CALIB_RESULT.tvecs[new_i],
                                 reproj_path, save_txt=True
                             )
-                    
-                    if config.verbose:
-                        logger.info('[INFO] Reprojection reports saved to %s', str(out_reproj))
+                
+                if config.verbose:
+                    logger.info('[INFO] Reprojection reports saved to %s', str(out_reproj))
                                 
-                except Exception as e:
-                    logger.exception('[EXCEPTION] Reprojection report generation failed: %s', e)
+
 
         except Exception as e:
             logger.exception('[EXCEPTION] Calibration failed: %s', e)
@@ -433,13 +398,18 @@ def run(argv=None) -> RuntimeState:
     else:
         logger.error('[FAIL] No successful frames found for calibration')
     
-    return state
+    return STATE
 
 
 if __name__ == '__main__':
-    state = run()
-    # GUI나 외부에서 사용할 수 있도록 state 반환
+    STATE1 = run()
+    # GUI나 외부에서 사용할 수 있도록 RuntimeState 반환
     # CLI 실행 시에는 성공 여부에 따라 exit code 반환
-    exit_code = 0 if state.rms_reproj <= 0.5 else 1
+    reproj = getattr(STATE1, 'reprojected', None)
+    # reprojected가 없거나 숫자가 아니면 실패로 간주
+    if reproj is None or not isinstance(reproj, (int, float, np.floating)):
+        exit_code = 1
+    else:
+        exit_code = 0 if reproj <= 0.5 else 1   
     raise SystemExit(exit_code)
 

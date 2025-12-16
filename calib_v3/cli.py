@@ -19,8 +19,10 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('src', type=str, help='source directory')
     ap.add_argument('dst', type=str, help='destination directory')
     
-    # blob params -------------------------------------------------------------
-    ap.add_argument('-blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 37.5')
+    # blob params -------------------------------------------------------------        
+    ap.add_argument('-dot_pitch_um', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um, default is 700')
+    ap.add_argument('-blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 35')
+
     ap.add_argument('-min_area', dest='min_area', type=float, default=default_config.min_area, help='minimum area of blob, if None, it is calculated from blob_dia_in_px')
     ap.add_argument('-max_area', dest='max_area', type=float, default=default_config.max_area, help='maximum area of blob, if None, it is calculated from blob_dia_in_px')
     ap.add_argument('-retrieval', dest='retrieval', type=str, choices=['SBD','external','list'], default=default_config.retrieval, help='retrieval method, default is "list"')
@@ -38,6 +40,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('--save_debug', dest='save_debug', action='store_true', default=default_config.save_debug, help='save debug images')
     ap.add_argument('--save_points', dest='save_points', action='store_true', default=default_config.save_points, help='save points')    
     ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error, help='save error')    
+    ap.add_argument('--save_reproj_png', dest='save_reproj_png', action='store_true', default=default_config.save_reproj_png, help='save reprojection figure and png')
     
     # outlier removal ---------------------------------------------------------
     ap.add_argument('--remove_outliers', dest='remove_outliers', action='store_true', default=default_config.remove_outliers, help='remove outliers, default is False')

@@ -12,10 +12,10 @@ class BlobDetectorConfig:
     - ThreeDotDetector._create_blob_detector / detect_blobs
     - get_points.detector (폴더 처리)
     """
-    blob_dia_in_px: float = 37.5
     
     # -------------------------------------------------------------
     # 공통 blob detector 파라미터    
+    blob_dia_in_px: float = 37.5 # 타겟에 따라 blob 크기 다를 수 있음
     min_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
     max_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
     min_fill: float = 0.8    

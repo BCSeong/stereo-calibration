@@ -7,7 +7,7 @@ import tifffile as tiff
 from pathlib import Path
 from ..utils.config import TransportConfig
 
-def compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, safety: float) -> Tuple[np.ndarray, np.ndarray]:
+def _compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, safety: float) -> Tuple[np.ndarray, np.ndarray]:
     """왜곡 보정 후 유효한 영역의 경계 상자를 계산"""
     R_eye = np.eye(3, dtype=np.float64)
     step = 1  # step size in pixels
@@ -58,7 +58,7 @@ def compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, safe
     return np.array([x_min, y_min], np.float64), np.array([x_max, y_max], np.float64)
 
 
-def build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int], min_xy: np.ndarray, max_xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
+def _build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int], min_xy: np.ndarray, max_xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
     """왜곡 보정 맵 생성"""
     R_eye = np.eye(3, dtype=np.float64)
     newW = int(max(1, int(max_xy[0] - min_xy[0] + 1)))
@@ -70,7 +70,7 @@ def build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int]
     return map_x, map_y, P_shift, newW, newH
 
 
-def apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float, transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
+def _apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float, transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
     """수평 플립 정책 적용 (TransportConfig 기준)
     
     Args:
@@ -100,7 +100,7 @@ def apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float, t
     return map_x, map_y, False
 
 
-def largest_all_valid_rect(map_x: np.ndarray, map_y: np.ndarray, w: int, h: int, margin: float = 0.0) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int, int, int]]:
+def _largest_all_valid_rect(map_x: np.ndarray, map_y: np.ndarray, w: int, h: int, margin: float = 0.0) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int, int, int]]:
     """유효한 영역에서 가장 큰 직사각형 찾기"""
     Hm, Wm = map_x.shape
     valid = (map_x >= margin) & (map_x <= (w - 1.0 - margin)) & (map_y >= margin) & (map_y <= (h - 1.0 - margin))
@@ -171,23 +171,37 @@ def generate_lut(
     safety = max(1.0, float(TRANSPORT_CONFIG.lut_crop_margin)) if TRANSPORT_CONFIG.lut_policy == 'crop' else 0.0
     
     # 내접 경계 상자 계산
-    min_xy, max_xy = compute_inscribed_bbox(K, dist, w, h, safety)
+    min_xy, max_xy = _compute_inscribed_bbox(K, dist, w, h, safety)
     
     # 정규화 맵 생성
-    map_x, map_y, P_shift, newW, newH = build_rectify_map(K, dist, img_size, min_xy, max_xy)
+    map_x, map_y, P_shift, newW, newH = _build_rectify_map(K, dist, img_size, min_xy, max_xy)
     
     # 수평 플립 적용 (TransportConfig 정책 사용)
-    map_x, map_y, did_flip = apply_hflip_if_needed(map_x, map_y, trel_x_sign, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
+    map_x, map_y, did_flip = _apply_hflip_if_needed(map_x, map_y, trel_x_sign, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
     
     # 크롭 정책 적용
     if TRANSPORT_CONFIG.lut_policy == 'crop':
-        map_x, map_y, crop_bbox = largest_all_valid_rect(map_x, map_y, w, h, margin=float(max(0.0, TRANSPORT_CONFIG.lut_crop_margin)))
+        map_x, map_y, crop_bbox = _largest_all_valid_rect(map_x, map_y, w, h, margin=float(max(0.0, TRANSPORT_CONFIG.lut_crop_margin)))
     else:
         crop_bbox = (0, map_x.shape[0]-1, 0, map_x.shape[1]-1)
+    
+    cx = K[0, 2]
+    cy = K[1, 2]
+    # cx, cy는 float이므로 interpolation을 사용하여 float 위치의 값을 추정해야 함
+    # order=1은 bilinear interpolation을 의미, mode는 boundary 처리 방식
+    from scipy.ndimage import map_coordinates
+    # 좌표는 (ndim, npoints) 형태: [[y좌표들], [x좌표들]]
+    # Transport 가 [1,0,0] 이거나 [-1,0,0] 인 경우만 해당
+    # Transport 가 [0,1,0] 이거나 [0,-1,0] 인 경우 별도 처리 필요
+    coords = np.array([[cy], [cx]], dtype=np.float64)
+    cam_center_y = map_coordinates(map_x, coords, order=1, mode='constant', cval=0.0)[0] # AIT-ICI convention
+    cam_center_x = map_coordinates(map_y, coords, order=1, mode='constant', cval=0.0)[0] # AIT-ICI convention
     
     # LUT 정보
     lut_info = {
         'map_shape': (int(map_x.shape[0]), int(map_x.shape[1])),
+        'cam_center_x': cam_center_x,
+        'cam_center_y': cam_center_y,
         'original_size': img_size,        
         'crop_bbox': crop_bbox,
         'did_flip': did_flip,

@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: calib_v3.main",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "calib_v3.main",
+            "args": [
+                "sample_imgs_KYICI_4M ",
+                "output_4M_KY",
+                "-dot_pitch_um",
+                "500",
+                "-blob_dia_in_px",
+                "25",
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
+            "stopOnEntry": false
+        }
+    ]
+}
+
