@@ -20,7 +20,8 @@ VERSION_HISTORY: List[VersionEntry] = [
     VersionEntry("2025-12-10", "b.seong@kohyoung.com", "Refactor calibration pipeline"),
     VersionEntry("2025-12-11", "b.seong@kohyoung.com", "Edit RuntimeState to include additional information and identical with AIT-ICI convention"),
     VersionEntry("2025-12-12", "b.seong@kohyoung.com", "Update backward LUT generation to include additional information"),
-    VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add additaional _compute_per_view_errors to CalibResult to utilze opencv's calibrateCamera not extended version")
+    VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add additaional _compute_per_view_errors to CalibResult to utilze opencv's calibrateCamera not extended version"),
+    VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add base disparity and working distance info on LotaCalibrationResult.json")
 ]
 
 CURRENT_VERSION: VersionEntry = VERSION_HISTORY[-1]
@@ -73,7 +74,7 @@ class AppConfig:
     #########################################      
     # Runtime/control flags
     save_debug: bool = True # 주요 디버깅
-    save_reproj_png: bool = False # 디버깅에 큰 도움 안됨
+    save_reproj_png: bool = True # 디버깅에 큰 도움 안됨
     save_points: bool = False # 디버깅에 큰 도움 안됨
     save_error: bool = True # 각 이미지 간 물리적 거리, 필수
     verbose: bool = True
@@ -137,6 +138,8 @@ class RuntimeState:
     cam_height: Optional[int] = None # native image height    
     cam_focal: Optional[float] = None # focal length in pixels
     transport: Optional[Tuple[float, float, float]] = None # transport vector (x, y, z)    
+    mean_Z_um: Optional[float] = None # mean Z-position of the center fiducial in um
+    mean_disparity: Optional[dict] = None # mean disparity in predefined baseline (mm)
 
     # calibration_lut_forward.json 산출물: remap lut related
     cam_center_x: Optional[float] = None # LUT center x coordinate

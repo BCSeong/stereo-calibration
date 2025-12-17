@@ -3,3 +3,4 @@ output*
 legacy*
 *.zip
 *.pyc
+__pycache__

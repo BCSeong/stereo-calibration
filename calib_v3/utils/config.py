@@ -18,8 +18,8 @@ class BlobDetectorConfig:
     blob_dia_in_px: float = 37.5 # 타겟에 따라 blob 크기 다를 수 있음
     min_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
     max_area: float = None # 타겟에 따라 blob 크기 다를 수 있음
-    min_fill: float = 0.8    
-    max_eccentricity: float = 0.85
+    min_fill: float = 0.66
+    max_eccentricity: float = 0.66
 
     bin_threshold: float = None # if 0 or None, Otsu is used
     retrieval: str = "list"
@@ -172,9 +172,13 @@ class TransportConfig:
     - main.run 내 transport 계산 후 axis_sign 적용
     예) (1,-1,1)이면 Y축 부호를 반전해 새로운 규약(Y up)을 제공 할 수 있음.
     """
+    baseline_mm: float = 0.8*8 # predefined baseline in mm for calculating mean disparity
+
     axis_sign: tuple = (1.0, 1.0, 1.0)
     # LUT 적용 이후 프레임 증가(시간 진행)에 따라 배경 disparity는 X+ 방향(오른쪽)으로 발생해야 함.
-    # mean_trel_x가 음수인 경우 LUT가 수평 플립을 적용해 disparity 가 X+ 으로 발생하게 보정함.
+    # transport vector 의 max component 가 Y-axis 인 경우 Y-axis 와 X-axis 를 서로 바꿈 (swap).
+    # trasnport[max_component] 가 axis_sign[max_component] 와 부호가 다른 경우 LUT가 플립을 적용해 disparity 가 X+ 으로 발생하게 보정함.
+    # !! 최종적으로 rectified (LUT가 적용된) 이미지는 frame 증가에 따라 이미지 feature 가 왼쪽에서 오른쪽으로 움직여야함.    
     # 이 정책 토글(하드코딩 기준) 관리:
     hflip_on_negative_mean_trel_x: bool = True
 

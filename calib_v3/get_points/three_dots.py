@@ -112,7 +112,7 @@ class ThreeDotDetector:
                         get_logger().warning('[WARN] cv2.fitEllipse failed')                        
                         pass
                 
-                # 서브픽셀 정밀화: 설정 시 moments 중심을 초기값으로 cornerSubPix로 보정
+                # 서브픽셀 정밀화: 설정 시 moments 중심을 초기값으로 cornerSubPix로 보정 # 딱히 필요 없음
                 if self.blob_config.enable_subpixel:
                     try:
                         M = cv2.moments(cnt)
@@ -304,14 +304,19 @@ class ThreeDotDetector:
     # ---------- Step 4: Evaluate 6 affine transforms ----------
     @staticmethod
     def _affines_for_triplet(Pc: np.ndarray, Pp: np.ndarray, Pm: np.ndarray) -> List[np.ndarray]:
-        """(i,i+,i-)를 이상 격자 {(0,0),(0,-2),(2,1)}로 보내는 6개의 아핀 변환 생성."""
+        """
+        (i,i+,i-)를 이상 격자 {(0,0),(0,2),(2,-1)}로 보내는 6개의 아핀 변환 생성.
+        2025-12-16 이상격자 좌표 변경:
+            - 기존 :  {(0,0),(0,-2),(2,1)}
+            - 변경 :  {(0,0),(0,2),(2,-1)}
+        """
         src = np.float32([Pc, Pp, Pm])
         # Target grid basis around central element i (paper-correct geometry):
         #   i  -> (0,  0)
-        #   i+ -> (0, -2)    (두 칸 위)
-        #   i- -> (2,  1)    (오른쪽 두 칸, 아래 한 칸)
+        #   i+ -> (0, 2)    (두 칸 위)
+        #   i- -> (2,  -1)    (오른쪽 두 칸, 아래 한 칸)
         # 주의: 실제 (Pc,Pp,Pm)의 순서는 알 수 없으므로 3! 모든 대응을 평가해 최적을 선택한다.
-        target = np.float32([[0.0, 0.0], [0.0, -2.0], [2.0, 1.0]])
+        target = np.float32([[0.0, 0.0], [0.0, 2.0], [2.0, -1.0]])
         affs: List[np.ndarray] = []
         for perm in permutations(range(3)):
             A = cv2.getAffineTransform(src[list(perm)], target)
@@ -645,13 +650,22 @@ class ThreeDotDetector:
         
         # DEBUG: 선택된 아핀 변환의 평균 격자거리(mean_error) 검증.        
         if score_tuple is None or not np.isfinite(score_tuple[0]) or float(score_tuple[0]) > float(self.score_config.max_affine_mean_error):
-            get_logger().warning('[WARN] mean_error too large: %.3f > %.3f', (np.nan if score_tuple is None else float(score_tuple[0])), float(self.score_config.max_affine_mean_error))
-            flag_TC_FAILED = True
+            get_logger().warning('[WARN] mean_error of Tc is too large: %.3f > %.3f', (np.nan if score_tuple is None else float(score_tuple[0])), float(self.score_config.max_affine_mean_error))
+            return DetectionResult(
+                Tc=None,
+                center_index=None,
+                grid_assign={},
+                points_xy=pts,
+                diameters=diam,
+                chosen_triplet=None,
+                all_keypoints=kps,
+                nn24_indices=None,
+                binarized_image=binarized_image
+            )
         else:
-            flag_TC_FAILED = False
+
             get_logger().debug('\t\t[DBG_CHOOSE_TC] triplet=%s (len=%d)', str(triplet), (0 if triplet is None else len(triplet)))
             get_logger().debug('\t\t[DBG_CHOOSE_TC] Tc=%s (len=%d)', str(Tc), (0 if Tc is None else len(Tc)))
-            get_logger().debug('\t\t[DBG_CHOOSE_TC] best_P =%s (len=%d)', str(best_P), (0 if best_P is None else len(best_P)))
 
         
         # step 5: grid assign

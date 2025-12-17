@@ -8,7 +8,12 @@ from pathlib import Path
 from ..utils.config import TransportConfig
 
 def _compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, safety: float) -> Tuple[np.ndarray, np.ndarray]:
-    """왜곡 보정 후 유효한 영역의 경계 상자를 계산"""
+    """왜곡 보정 후 유효한 영역의 경계 상자 계산
+    
+    Returns:
+        (min_width_index, min_height_index), (max_width_index, max_height_index)
+        각 인덱스는 width→x, height→y 순서로 반환된다.
+    """
     R_eye = np.eye(3, dtype=np.float64)
     step = 1  # step size in pixels
     xs = np.arange(0, w, step, dtype=np.float64)
@@ -50,60 +55,90 @@ def _compute_inscribed_bbox(K: np.ndarray, dist: np.ndarray, w: int, h: int, saf
     left_max = max(np.max(ul[:, 0]) for (_, _, ul, _) in und_rings)
     right_min = min(np.min(ur[:, 0]) for (_, _, _, ur) in und_rings)
     
-    y_min = np.ceil(top_max + safety)
-    y_max = np.floor(bottom_min - safety)
-    x_min = np.ceil(left_max + safety)
-    x_max = np.floor(right_min - safety)
+    min_height_index = np.ceil(top_max + safety)
+    max_height_index = np.floor(bottom_min - safety)
+    min_width_index = np.ceil(left_max + safety)
+    max_width_index = np.floor(right_min - safety)
     
-    return np.array([x_min, y_min], np.float64), np.array([x_max, y_max], np.float64)
+    return (
+        np.array([min_height_index, max_height_index], np.float64),
+        np.array([min_width_index, max_width_index], np.float64),
+    )
 
 
-def _build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int], min_xy: np.ndarray, max_xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
+def _build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int], height_idx_minmax: np.ndarray, width_idx_minmax: np.ndarray, max_component_idx: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
     """왜곡 보정 맵 생성"""
     R_eye = np.eye(3, dtype=np.float64)
-    newW = int(max(1, int(max_xy[0] - min_xy[0] + 1)))
-    newH = int(max(1, int(max_xy[1] - min_xy[1] + 1)))
+    newW = int(max(1, int(width_idx_minmax[1] - width_idx_minmax[0] + 1)))
+    newH = int(max(1, int(height_idx_minmax[1] - height_idx_minmax[0] + 1)))
+
+    size = (newW, newH) if max_component_idx == 0 else (newH, newW)
+
     P_shift = K.astype(np.float64).copy()
-    P_shift[0, 2] -= float(min_xy[0])
-    P_shift[1, 2] -= float(min_xy[1])
-    map_x, map_y = cv2.initUndistortRectifyMap(K.astype(np.float64), dist.astype(np.float64), R_eye, P_shift, (newW, newH), cv2.CV_32FC1)
-    return map_x, map_y, P_shift, newW, newH
+    P_shift[0, 2] -= float(width_idx_minmax[0])
+    P_shift[1, 2] -= float(height_idx_minmax[0])
+    map_x, map_y = cv2.initUndistortRectifyMap(K.astype(np.float64), dist.astype(np.float64), R_eye, P_shift, size, cv2.CV_32FC1)
+    return map_x, map_y, P_shift, newH, newW
 
 
-def _apply_hflip_if_needed(map_x: np.ndarray, map_y: np.ndarray, trel_x: float, transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
+def _apply_flip_if_needed(map_x: np.ndarray, map_y: np.ndarray, transport: Tuple[float, float, float], transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
     """수평 플립 정책 적용 (TransportConfig 기준)
     
     Args:
         map_x, map_y: LUT 맵
-        trel_x: transport vector의 X 성분
+        transport: transport vector x,y,z components
     
     Returns:
-        (map_x, map_y, did_flip): 플립된 맵과 플립 여부
+        (map_x, map_y, did_flip, did_swap): 플립된 맵과 플립 여부
     """
+
+    '''
+    option 1 : max_component == 0 and transport[max_component] > 0 (x-axis positive); → object moves along x-axis positive direction in the next frame on image coordinate        
+        --> do nothing
     
-    # TransportConfig를 이용한 flip 결정
-    axis_x_sign = transport_axis_sign[0]
-        
-    # hflip_on_negative_mean_trel_x 조건이 활성화되어 있고,
-    # 산출된 X 위치가 axis_sign과 부호가 다르면 flip 수행
-    should_flip = False
-    if hflip_on_negative_mean_trel_x:
-        # trel_x와 axis_x_sign의 부호가 다르면 flip
-        if (trel_x > 0) != (axis_x_sign > 0):
-            should_flip = True
+    option 2 : max_component == 0 and transport[max_component] < 0 (x-axis negative); ← object moves along x-axis negative direction in the next frame on image coordinate
+        --> flip horizontal and vertical axis
     
-    # 디버그 로그 (verbose 모드에서만)
-    print(f'[LUT] Flip decision: trel_x={trel_x:.6f}, axis_x_sign={axis_x_sign}, should_flip={should_flip}')
+    option 3 : max_component == 1 and transport[max_component] > 0 (y-axis positive); ↓ object moves along y-axis positive direction in the next frame on image coordinate
+        --> do not flip
+        --> swap map_x and map_y
     
-    if should_flip:
-        return map_x[:, ::-1], map_y[:, ::-1], True
-    return map_x, map_y, False
+    option 4 : max_component == 1 and transport[max_component] < 0 (y-axis negative); ↑ object moves along y-axis negative direction in the next frame on image coordinate        
+        --> flip horizontal and vertical axis
+        --> swap map_x and map_y
+    
+    '''
+
+    # transport vector 의 max component 찾기
+    max_component_idx = np.argmax(np.abs(transport))
+    
+    # reference_axis_sign 와 estimated_transport_sign 의 부호를 판단하여 option 1, 2, 3, 4 중 하나를 선택
+    reference_axis_sign = transport_axis_sign[max_component_idx]
+    estimated_transport_sign = transport[max_component_idx]
+    
+    # option 1
+    if max_component_idx == 0 and estimated_transport_sign > 0:
+        return map_x, map_y, False, False # do nothing
+    # option 2
+    elif max_component_idx == 0 and estimated_transport_sign < 0:
+        return map_x[:, ::-1], map_y[:, ::-1], True, False # flip horizontal and vertical axis
+    # option 3
+    elif max_component_idx == 1 and estimated_transport_sign > 0:
+        map_x_swapped, map_y_swapped = map_y, map_x
+        return map_x_swapped, map_y_swapped, False, True # swap map_x and map_y        
+    # option 4
+    elif max_component_idx == 1 and estimated_transport_sign < 0:
+        map_x_flipped, map_y_flipped = map_x[::-1, ::-1], map_y[::-1, ::-1] # flip horizontal and vertical axis
+        map_x_flipped_swapped, map_y_flipped_swapped = map_y_flipped, map_x_flipped # swap map_x and map_y
+        return map_x_flipped_swapped, map_y_flipped_swapped, True, True 
 
 
-def _largest_all_valid_rect(map_x: np.ndarray, map_y: np.ndarray, w: int, h: int, margin: float = 0.0) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int, int, int]]:
+
+
+def _largest_all_valid_rect(map_x: np.ndarray, map_y: np.ndarray, max_index_for_map_x: int, max_index_for_map_y: int, margin: float = 0.0) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int, int, int]]:
     """유효한 영역에서 가장 큰 직사각형 찾기"""
     Hm, Wm = map_x.shape
-    valid = (map_x >= margin) & (map_x <= (w - 1.0 - margin)) & (map_y >= margin) & (map_y <= (h - 1.0 - margin))
+    valid = (map_x >= margin) & (map_x <= (max_index_for_map_x - 1.0 - margin)) & (map_y >= margin) & (map_y <= (max_index_for_map_y - 1.0 - margin))
     
     heights = np.zeros(Wm, dtype=np.int32)
     best_area = 0
@@ -149,7 +184,7 @@ def generate_lut(
     K: np.ndarray, 
     dist: np.ndarray, 
     img_size: Tuple[int, int],
-    trel_x_sign: float = 0.0,
+    transport: Tuple[float, float, float],
     TRANSPORT_CONFIG: TransportConfig = None,
 ) -> Tuple[np.ndarray, np.ndarray, dict]:
     """LUT 생성 및 저장
@@ -157,7 +192,7 @@ def generate_lut(
     Args:
         K: 카메라 내부 파라미터
         dist: 왜곡 계수
-        img_size: 이미지 크기 (width, height)
+        img_size: 이미지 크기 (height, width)
         lut_policy: LUT 정책 ('crop' 또는 'expand')
         lut_crop_margin: 크롭 마진
         trel_x_sign: 상대 이동량 X 부호
@@ -165,23 +200,32 @@ def generate_lut(
     Returns:
         (map_x, map_y, lut_info): LUT 맵과 정보
     """
-    w, h = img_size
+    h, w = img_size
+
+    # transport vector 의 max component 찾기
+    max_component_idx = np.argmax(np.abs(transport))
     
     # 안전 마진 계산
     safety = max(1.0, float(TRANSPORT_CONFIG.lut_crop_margin)) if TRANSPORT_CONFIG.lut_policy == 'crop' else 0.0
     
     # 내접 경계 상자 계산
-    min_xy, max_xy = _compute_inscribed_bbox(K, dist, w, h, safety)
+    height_idx_minmax, width_idx_minmax = _compute_inscribed_bbox(K, dist, w, h, safety)
     
-    # 정규화 맵 생성
-    map_x, map_y, P_shift, newW, newH = _build_rectify_map(K, dist, img_size, min_xy, max_xy)
+    # 정규화 맵 생성 # max_component_idx == 0 이면 map_xy 의 aspect ratio 는 image_size 와 동일. max_component_idx == 1 이면 map_xy 의 aspect ratio 는 image_size 와 반대.
+    map_x, map_y, P_shift, newW, newH = _build_rectify_map(K, dist, img_size, height_idx_minmax, width_idx_minmax, max_component_idx)
+    # from matplotlib import pyplot as plt
     
-    # 수평 플립 적용 (TransportConfig 정책 사용)
-    map_x, map_y, did_flip = _apply_hflip_if_needed(map_x, map_y, trel_x_sign, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
-    
+    # trasnport vector 의 max component 의 부호에 따라 X-axis <-> Y-axis     
+    # 수평/수직 플립 적용 (TransportConfig 정책 사용)
+    map_x, map_y, did_flip, did_swap = _apply_flip_if_needed(map_x, map_y, transport, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
+
+    # did_swap = True 이면 remap 이후 이미지가 90deg 회전되어 map_x 가 가지는 최대 index 는 height 가 되고, map_y 가 가지는 최대 index 는 width 가 된다.
+    max_index_for_map_x = h if not did_swap else w
+    max_index_for_map_y = w if not did_swap else h
+
     # 크롭 정책 적용
     if TRANSPORT_CONFIG.lut_policy == 'crop':
-        map_x, map_y, crop_bbox = _largest_all_valid_rect(map_x, map_y, w, h, margin=float(max(0.0, TRANSPORT_CONFIG.lut_crop_margin)))
+        map_x, map_y, crop_bbox = _largest_all_valid_rect(map_x, map_y, max_index_for_map_x, max_index_for_map_y, margin=float(max(0.0, TRANSPORT_CONFIG.lut_crop_margin)))
     else:
         crop_bbox = (0, map_x.shape[0]-1, 0, map_x.shape[1]-1)
     

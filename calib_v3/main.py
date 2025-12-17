@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from calib_v3.utils.types import FrameData
 import traceback
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -8,6 +7,7 @@ from pprint import pprint
 import numpy as np
 import cv2
 from typing import List
+import math
 
 from .cli import build_argparser, update_dataclass_from_namespace
 from .get_points.three_dots import ThreeDotDetector
@@ -15,57 +15,8 @@ from .utils.logger import init_logger, get_logger
 from .calibrate_points.calibrator import calibrate_shared
 from .utils.reporting import convert_and_update_runtime_state, save_calibration_results_from_runtime_state
 from .utils.types import FrameData, AppConfig, RuntimeState, CalibResult, update_runtime_state_by_kept_indices
-from .debug.visuals import save_detection_overlay, save_grid_report, save_reprojection_report
+from .debug.visuals import save_detection_overlay, save_grid_report, save_reprojection_report, save_grid_path_report
 from .utils.config import BlobDetectorConfig, GridConfig, TransportConfig, AffineCandidateConfig, ScoringConfig
-
-
-def _rerun_with_debug(config: AppConfig, TRANSPORT_CONFIG: TransportConfig, STATE: RuntimeState) -> RuntimeState:
-    """Debug 옵션으로 재실행
-    
-    Args:
-        config: 앱 설정
-        frames: 프레임 데이터 리스트
-        STATE: 현재 실행 상태
-        by_folder: 폴더별 프레임 인덱스 매핑
-        
-    Returns:
-        RuntimeState: 업데이트된 실행 상태
-    """
-    try:
-        if config.verbose:
-            print("[INFO] Re-running calibration with debug enabled...")
-                
-        # Outlier 제거 권장 메시지
-        if not config.remove_outliers:
-            print("[RECOMMENDATION] Consider using --remove_outliers flag to automatically remove bad frames")
-            print("Example: python -m calib_v3.main --remove_outliers --outlier_threshold 2.0")
-        
-        # 재캘리브레이션 (outlier 제거 포함)
-        STATE.CALIB_RESULT = calibrate_shared(
-            RuntimeState=STATE,
-            remove_outliers=True,  # 강제로 outlier 제거 활성화
-            outlier_threshold=config.outlier_threshold,
-            use_guess=config.use_guess,
-            K_guess=config.K_guess
-        )
-        
-       
-        # 결과 재저장 및 상태 업데이트
-        frame_names = [f"{f.image_path.parent.name}/{f.image_path.name}" for f in STATE.FRAME_DATA_LIST]
-        STATE = convert_and_update_runtime_state(
-            RuntimeState=STATE,
-            TRANSPORT_CONFIG=TRANSPORT_CONFIG,
-            output_dir=config.dst,
-            save_error_plots_flag=config.save_error,
-            verbose=config.verbose               
-        )
-        
-        return STATE
-            
-    except Exception as e:
-        print(f"[ERR] Re-run failed: {e}")
-        traceback.print_exc()
-        return STATE
 
 
 def run(argv=None) -> RuntimeState:
@@ -80,7 +31,7 @@ def run(argv=None) -> RuntimeState:
     )
     if args.blob_dia_in_px is not None and args.min_area is None and args.max_area is None:
         config.max_area = 4.00 * 3.14* (args.blob_dia_in_px/2)**2
-        config.min_area = 0.75 * 3.14* (args.blob_dia_in_px/2)**2
+        config.min_area = 0.60 * 3.14* (args.blob_dia_in_px/2)**2
     
     # CLI 인자로 AppConfig 업데이트
     update_dataclass_from_namespace(config, args)
@@ -90,7 +41,7 @@ def run(argv=None) -> RuntimeState:
     
     
     # 로거 초기화 (파일: dst/calibration.log, 콘솔: INFO 이상)
-    log_path = Path(config.dst) / 'calibration.log'
+    log_path = Path(config.debug_dir) / 'calibration.log'
     init_logger(log_path)
     logger = get_logger()
     logger.info('[ENTER] main.run')
@@ -123,7 +74,8 @@ def run(argv=None) -> RuntimeState:
         logger.info('[CONFIG] %s', {'src': str(config.src),
          'dst': str(config.dst),
          'blob_detector': {
-            'dot_pitch_um': float(config.dot_pitch_um),            
+            'dot_pitch_um': float(GRID_CONFIG.dot_pitch_um),   
+            'max_grid_size': int(GRID_CONFIG.max_grid_size),
             'blob_dia_in_px': float(BLOB_CONFIG.blob_dia_in_px),            
             'retrieval': str(BLOB_CONFIG.retrieval),
             'bin_threshold': BLOB_CONFIG.bin_threshold, # None or float
@@ -158,6 +110,37 @@ def run(argv=None) -> RuntimeState:
     failed = 0
     # RuntimeState 초기화
     STATE = RuntimeState()
+    frame_stats: List[dict] = []
+
+    def compute_grid_orientation(grid_uv_to_idx, pts_xy):
+        if not grid_uv_to_idx or pts_xy is None:
+            return {"u_deg": 0.0, "v_deg": 0.0}
+        u_vecs = []
+        v_vecs = []
+        key_set = set(grid_uv_to_idx.keys())
+        for (u, v), idx in grid_uv_to_idx.items():
+            if (u + 1, v) in key_set:
+                j = grid_uv_to_idx[(u + 1, v)]
+                u_vecs.append(pts_xy[j] - pts_xy[idx])
+            if (u, v + 1) in key_set:
+                j = grid_uv_to_idx[(u, v + 1)]
+                v_vecs.append(pts_xy[j] - pts_xy[idx])
+
+        def mean_angle(vecs):
+            if not vecs:
+                return 0.0, np.zeros(2, dtype=np.float64)
+            arr = np.array(vecs, dtype=np.float64)
+            ang = np.arctan2(arr[:, 1], arr[:, 0])
+            mean_ang = math.degrees(math.atan2(np.mean(np.sin(ang)), np.mean(np.cos(ang))))
+            mean_vec = np.mean(arr, axis=0)
+            return float(mean_ang), mean_vec
+
+        u_deg, u_mean_vec = mean_angle(u_vecs)
+        v_deg, v_mean_vec = mean_angle(v_vecs)
+        return {
+            "u_deg": u_deg,
+            "v_deg": v_deg
+        }
     
     # 캘리브레이션용 points 수집 (types.py 구조 사용)
     STATE.FRAME_DATA_LIST: List[FrameData] = []
@@ -184,7 +167,27 @@ def run(argv=None) -> RuntimeState:
             res = det.run_on_image(img_path, gray)
             pts = res.points_xy
             diam = res.diameters
-            
+
+            # 프레임 통계 누적 (dot/diameter, 인접 거리)
+            dot_count = int(len(pts)) if pts is not None else 0
+            if diam is not None and len(diam) > 0:
+                dot_dia_mean = float(np.mean(diam))
+                dot_dia_std = float(np.std(diam))
+                dot_dia_max = float(np.max(diam))
+                dot_dia_min = float(np.min(diam))
+            else:
+                dot_dia_mean = dot_dia_std = dot_dia_max = dot_dia_min = 0.0
+
+            # grid 인접 거리/방향 통계 초기화
+            dist_stats = {"mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "count": 0}
+            orient_stats = {"u_deg": 0.0, "v_deg": 0.0}
+
+            try:
+                rel_path = img_path.relative_to(config.src)
+                img_label = str(rel_path)
+            except ValueError:
+                img_label = str(img_path.name)
+
             # DEBUG 시각화 처리 
             if config.save_debug:
                 # 이미지의 상대 경로 구조 생성 (src 기준)
@@ -218,26 +221,41 @@ def run(argv=None) -> RuntimeState:
                     out_png = debug_success_dir / f"{debug_filename}_blobs.png"
                     save_detection_overlay(gray, pts, res.chosen_triplet, out_png, None, res.nn24_indices)
                     
-                    # Grid report 저장 (triplet 포함)
+                    '''
+                    # Grid report 저장 (triplet 포함)                    
                     grid_report_path = debug_success_dir / f"{debug_filename}_grid.png"
                     save_grid_report(img_path, gray, pts, res.grid_assign, res.Tc, grid_report_path, res.chosen_triplet)
+                    '''
+
+                    # (2025-12-15) 추가 : Grid path 저장
+                    grid_path_path = debug_success_dir / f"{debug_filename}_grid_path.png"
+                    dist_stats = save_grid_path_report(img_path, gray, pts, res.grid_assign, res.Tc, grid_path_path, res.chosen_triplet)
+                    orient_stats = compute_grid_orientation(res.grid_assign, pts)
                 else:
                     # 실패한 경우
                     out_png = debug_fails_dir / f"{debug_filename}_blobs.png"
                     save_detection_overlay(gray, pts, None, out_png, None, None)
+                    dist_stats = {"mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "count": 0}
+                    orient_stats = {"u_deg": 0.0, "v_deg": 0.0}
+            else:
+                if res.grid_assign and len(res.grid_assign) > 0:
+                    dist_stats = {"mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "count": 0}
+                    orient_stats = compute_grid_orientation(res.grid_assign, pts)
+                else:
+                    dist_stats = {"mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "count": 0}
+                    orient_stats = {"u_deg": 0.0, "v_deg": 0.0}
             
             # RuntimeState 업데이트, 성공한 프레임의 points 수집 (grid_assign이 비어있지 않으면 성공)
             if res.grid_assign and len(res.grid_assign) > 0:
-                # object points 생성 (실제 dot_pitch_um 사용)
+                # object points 생성 (실제 dot_pitch_um 사용, 회전/shift 적용 없음)
                 grid_keys = list(res.grid_assign.keys())
                 if grid_keys:
-                    # 격자 좌표를 실제 월드 좌표로 변환 (dot_pitch_um 사용)
                     uv = np.array(grid_keys, dtype=np.int32)
                     object_pts = np.zeros((len(uv), 3), dtype=np.float32)
                     object_pts[:, 0] = uv[:, 0] * float(GRID_CONFIG.dot_pitch_um)  # X: um
                     object_pts[:, 1] = uv[:, 1] * float(GRID_CONFIG.dot_pitch_um)  # Y: um
                     object_pts[:, 2] = 0.0  # Z: um (평면)
-                    
+
                     # FrameData 구조로 저장
                     frame_data = FrameData(
                         image_path=img_path,
@@ -249,6 +267,27 @@ def run(argv=None) -> RuntimeState:
                     # RuntimeState 업데이트, 이미지 크기 저장 (첫 번째 성공 프레임에서)
                     if STATE.image_size is None:
                         STATE.image_size = (gray.shape[0], gray.shape[1])  # (height, width)
+
+            
+            # blob & grid 통계 누적
+            # 성공 여부는 grid_assign 유무로 판단
+            success_flag = 1.0 if (res.grid_assign and len(res.grid_assign) > 0) else 0.0
+            frame_stats.append({
+                "image": img_label,
+                "success": bool(success_flag),
+                "dot_count": dot_count,
+                "dot_dia_mean": dot_dia_mean,
+                "dot_dia_std": dot_dia_std,
+                "dot_dia_max": dot_dia_max,
+                "dot_dia_min": dot_dia_min,
+                "grid_dist_mean": dist_stats["mean"],
+                "grid_dist_std": dist_stats["std"],
+                "grid_dist_max": dist_stats["max"],
+                "grid_dist_min": dist_stats["min"],
+                "grid_dist_count": dist_stats["count"],
+                "img_u_deg": orient_stats["u_deg"],
+                "img_v_deg": orient_stats["v_deg"]
+            })            
             
             processed += 1
 
@@ -260,10 +299,8 @@ def run(argv=None) -> RuntimeState:
             # 메모리 해제
             del gray, pts, diam
             gc.collect()
-            logger.info('[INFO] Blob and Grid assignment done: processed=%d/%d, failed=%d, dst=%s', processed, target_frames, failed, str(config.dst))
+            logger.info('[INFO] Blob and Grid assignment done: processed=%d/%d, exception=%d, grid_success=%s, img_path=%s', processed, target_frames, bool(failed), bool(success_flag), str(img_path))
             
-
-
         # save_points 옵션이 활성화된 경우 전체 points를 하나의 NPZ로 저장
         # 현재 저장한 뒤 debugging 하는 프로세스 없음 (삭제 무관)
         if config.save_points and STATE.FRAME_DATA_LIST:
@@ -279,6 +316,44 @@ def run(argv=None) -> RuntimeState:
                 logger.info('[INFO] Saved %d frames to %s', len(STATE.FRAME_DATA_LIST), str(npz_path))
         
         
+    # ------------------------------------------------------------------------------------------
+    # Blob & Grid Summary report (HTML) 저장
+    # ------------------------------------------------------------------------------------------
+    def dict_to_table(title: str, data: dict) -> str:
+        rows = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in data.items())
+        return f"<h3>{title}</h3><table border='1' cellspacing='0' cellpadding='4'>{rows}</table>"
+
+    def list_of_dicts_to_table(title: str, rows: List[dict]) -> str:
+        if not rows:
+            return f"<h3>{title}</h3><p>no data</p>"
+        headers = list(rows[0].keys())
+        header_html = "".join(f"<th>{h}</th>" for h in headers)
+        body_html = ""
+        for row in rows:
+            cells = []
+            for h in headers:
+                v = row.get(h, "")
+                if isinstance(v, float):
+                    cells.append(f"{v:.3f}")
+                else:
+                    cells.append(str(v))
+            body_html += "<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>"
+        return f"<h3>{title}</h3><table border='1' cellspacing='0' cellpadding='4'><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table>"
+
+    config_tables = [
+        dict_to_table("BlobDetectorConfig", asdict(BLOB_CONFIG)),
+        dict_to_table("GridConfig", asdict(GRID_CONFIG)),
+        dict_to_table("AffineCandidateConfig", asdict(AFFINE_CANDIDATE_CONFIG)),
+        dict_to_table("ScoringConfig", asdict(SCORE_CONFIG)),
+        dict_to_table("TransportConfig", asdict(TRANSPORT_CONFIG)),
+    ]
+
+    frame_table = list_of_dicts_to_table("Frame stats", frame_stats)
+
+    summary_html = "<html><body>" + "".join(config_tables) + frame_table + "</body></html>"
+    summary_path = config.debug_dir / "Blob_Grid_Assignment_Summary.html"
+    with summary_path.open("w", encoding="utf-8") as f:
+        f.write(summary_html)
     
     # ------------------------------------------------------------------------------------------
     # Calibration
@@ -299,28 +374,13 @@ def run(argv=None) -> RuntimeState:
                 remove_outliers=config.remove_outliers,
                 outlier_threshold=config.outlier_threshold
             )
-            
-            # kept_indices를 기반으로 FRAME_DATA_LIST를 정렬/필터링
-            # kept_indices 는 outlier 제거 후 남은 프레임 인덱스 리스트임.
-            STATE = update_runtime_state_by_kept_indices(
-                RuntimeState=STATE,
-                kept_indices=STATE.CALIB_RESULT.kept_indices
-            )
-                         
-
-            # 결과 변환 및 저장
-            STATE = convert_and_update_runtime_state(
-                RuntimeState=STATE,
-                TRANSPORT_CONFIG=TRANSPORT_CONFIG,                
-                verbose=config.verbose                
-            )
-            
+                                    
             # Reprojection error 체크
-            calibration_success = (STATE.reprojected <= 0.5)
-            logger.info('[INFO] Reprojection error: %s', str(STATE.reprojected))
+            calibration_success = (float(STATE.CALIB_RESULT.reprojected) <= 0.5)
+            logger.info('[INFO] Reprojection error: %s', str(STATE.CALIB_RESULT.reprojected))
 
-            # Reprojection error 체크 실패 시 remove_outliers=True 재실행
-            if not calibration_success:
+            # Reprojection error 체크 실패 시 remove_outliers=True 재실행, 재실행해도 큰 개선 없을 확률 높음.
+            if not calibration_success and not config.remove_outliers:
                 if config.save_debug:
                     logger.info('[GUIDE] Check debug results:')
                     logger.info(' 1) Blob params: min_area, min_fill, max_eccentricity, bin_threshold')
@@ -331,29 +391,53 @@ def run(argv=None) -> RuntimeState:
                     response = input().strip().lower()
                     if response == 'y' or response == 'yes':
                         logger.info('[BRANCH] Re-running with debug enabled...')
-                        # Debug 옵션 활성화하여 재실행
-                        config.save_debug = True
-                        # 재실행 로직
-                        STATE = _rerun_with_debug(config, TRANSPORT_CONFIG, STATE)
+
+                        # remove_outliers 옵션 활성화하여 재실행
+                        logger.info('[BRANCH] calibrate_shared called (remove_outliers=%s)', str(config.remove_outliers))
+                        STATE.CALIB_RESULT = calibrate_shared(
+                            RuntimeState=STATE,
+                            remove_outliers=True,
+                            outlier_threshold=config.outlier_threshold
+                        )
+                        
+                        # kept_indices를 기반으로 FRAME_DATA_LIST를 정렬/필터링
+                        # kept_indices 는 outlier 제거 후 남은 프레임 인덱스 리스트임.
+                        STATE = update_runtime_state_by_kept_indices(
+                            RuntimeState=STATE,
+                            kept_indices=STATE.CALIB_RESULT.kept_indices
+                        )
+                        
                         calibration_success = (STATE.reprojected <= 0.5)
-                        logger.info('[INFO] Reprojection error with outlier removal: %s', str(STATE.reprojected))
+                        logger.info('[INFO] Reprojection error with outlier removal: %s', str(STATE.CALIB_RESULT.reprojected))
                         if calibration_success:
-                            print("[SUCCESS] Re-calibration completed successfully with debug enabled\n")
+                            print("[SUCCESS] Re-calibration completed successfully with remove_outliers enabled\n")
                             
                         else:
                             print("[FAIL] Re-calibration still failed. Please check debug results and adjust parameters.")                            
                     else:
                         logger.info('[LEAVE] Exiting without re-calibration(remove_outliers=True).')
-
+            
+            # outlier 제거 후 남은 프레임 인덱스 리스트를 기반으로 FRAME_DATA_LIST를 정렬/필터링
+            STATE = update_runtime_state_by_kept_indices(
+                RuntimeState=STATE,
+                kept_indices=STATE.CALIB_RESULT.kept_indices
+            )
+            # 결과 변환 및 저장
+            STATE = convert_and_update_runtime_state(
+                RuntimeState=STATE,
+                TRANSPORT_CONFIG=TRANSPORT_CONFIG,                
+                verbose=config.verbose                
+            )
             # 결과 저장 (실패하더라도 저장 및 디버깅)
             save_calibration_results_from_runtime_state(
                 RuntimeState=STATE,
                 output_dir=config.dst,
+                debug_dir=config.debug_dir,
                 save_error_plots_flag=config.save_error,                
                 verbose=config.verbose
             )
                 
-            # DEBUG 재투영 리포트 생성
+            # DEBUG reprojection_report 재투영 리포트 생성
             if config.save_reproj_png:
                 if config.verbose:
                     logger.info('[INFO] Generating reprojection reports for %d kept frames', len(STATE.CALIB_RESULT.kept_indices))
@@ -411,5 +495,4 @@ if __name__ == '__main__':
         exit_code = 1
     else:
         exit_code = 0 if reproj <= 0.5 else 1   
-    raise SystemExit(exit_code)
 

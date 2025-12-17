@@ -6,6 +6,12 @@ import numpy as np
 import cv2
 from .logger import get_logger
 
+def compute_mean_disparity(camera_matrix: np.ndarray, mean_Z_mm: float, baseline_mm: float) -> dict:
+    fx = float(camera_matrix[0, 0])
+    if mean_Z_mm <= 0:
+        return {"mean_disparity": 0.0, "predefined_baseline_mm": baseline_mm}
+    disparity = fx * (baseline_mm / mean_Z_mm)
+    return {"mean_disparity": disparity, "predefined_baseline_mm": baseline_mm, "mean_Z_mm": mean_Z_mm}
 
 def compute_transport_vector(
     tvecs: List[np.ndarray], 
@@ -41,24 +47,25 @@ def compute_transport_vector(
     return transport
 
 
-def compute_resolution_um_per_px(
+def compute_resolution_from_tvecs(
     K: np.ndarray, 
     tvecs: List[np.ndarray]
 ) -> float:
-    """Resolution 계산 (um/px) 
+    """Resolution 계산 
+    tvecs 의 scale 에 따라 결과 나옴, mm or um
     
     Args:
         K: 카메라 내부 파라미터 행렬
-        tvecs: 각 프레임의 translation vector 리스트
+        tvecs: 각 프레임의 translation vector 리스트 mm scale
         
     Returns:
-        resolution_um_per_px: 픽셀당 um 단위
+        resolution_mm_per_px: 픽셀당 mm 단위
     """
     fx = float(K[0, 0])
     z_vals = [float(tvecs[i].ravel()[2]) for i in range(len(tvecs))]
     mean_Z = float(np.mean(z_vals)) if z_vals else 0.0
-    resolution_um_per_px = (mean_Z / fx) if fx > 0 else 0.0
-    return float(resolution_um_per_px)
+    resolution = (mean_Z / fx) if fx > 0 else 0.0
+    return resolution, mean_Z
 
 # deprecated, instead use compute_relative_transforms_without_rotation
 def compute_relative_transforms(

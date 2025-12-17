@@ -2,17 +2,40 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: calib_v3.main",
+            "name": "Python: sample_imgs_16M_lota_unit2_1only",
             "type": "debugpy",
             "request": "launch",
             "module": "calib_v3.main",
             "args": [
-                "sample_imgs_KYICI_4M ",
-                "output_4M_KY",
-                "-dot_pitch_um",
-                "500",
-                "-blob_dia_in_px",
-                "25",
+                "sample_imgs_16M_lota_unit2_1only",
+                "output_16M_lota2_1only_KY_skip10",
+                "-p",
+                "700",
+                "-b",
+                "35",
+                "--skip",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
+            "stopOnEntry": false
+        },        
+        {
+            "name": "Python: sample_imgs_16M_lota_unit2",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "calib_v3.main",
+            "args": [
+                "sample_imgs_16M_lota_unit2",
+                "output_16M_lota2_KY_skip10",
+                "-p",
+                "700",
+                "-b",
+                "35",
+                "--skip",
+                "10"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,

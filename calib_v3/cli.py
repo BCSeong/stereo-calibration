@@ -20,16 +20,16 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('dst', type=str, help='destination directory')
     
     # blob params -------------------------------------------------------------        
-    ap.add_argument('-dot_pitch_um', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um, default is 700')
-    ap.add_argument('-blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 35')
+    ap.add_argument('-b', '--blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 35')
 
-    ap.add_argument('-min_area', dest='min_area', type=float, default=default_config.min_area, help='minimum area of blob, if None, it is calculated from blob_dia_in_px')
-    ap.add_argument('-max_area', dest='max_area', type=float, default=default_config.max_area, help='maximum area of blob, if None, it is calculated from blob_dia_in_px')
-    ap.add_argument('-retrieval', dest='retrieval', type=str, choices=['SBD','external','list'], default=default_config.retrieval, help='retrieval method, default is "list"')
-    ap.add_argument('-binarize_thd', dest='bin_threshold', type=float, default=default_config.binarize_thd, help='binarization threshold, default is "Otsu"')
+    ap.add_argument('--min_area', dest='min_area', type=float, default=default_config.min_area, help='minimum area of blob, if None, it is calculated from blob_dia_in_px')
+    ap.add_argument('--max_area', dest='max_area', type=float, default=default_config.max_area, help='maximum area of blob, if None, it is calculated from blob_dia_in_px')
+    ap.add_argument('--retrieval', dest='retrieval', type=str, choices=['SBD','external','list'], default=default_config.retrieval, help='retrieval method, default is "list"')
+    ap.add_argument('--binarize_thd', dest='bin_threshold', type=float, default=default_config.binarize_thd, help='binarization threshold, default is "Otsu"')
     
     # pattern/camera scale ---------------------------------------------------------
-    ap.add_argument('-s', '--spacing', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um')
+    ap.add_argument('-p', '--dot_pitch_um', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um')
+    ap.add_argument('-m', '--max_grid_size', dest='max_grid_size', type=int, default=default_config.max_grid_size, help='max grid size, default is 100')
     
     # lut -----------------------------------------------------------
     ap.add_argument('--lut_policy', dest='lut_policy', type=str, choices=['crop', 'expand'], default=default_config.lut_policy, help='lut policy, crop or expand')

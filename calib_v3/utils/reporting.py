@@ -8,13 +8,14 @@ import numpy as np
 import cv2
 from .analysis import (
     compute_transport_vector,
-    compute_resolution_um_per_px,
+    compute_resolution_from_tvecs,
     compute_relative_transforms,
-    compute_relative_transforms_world,
-    compute_relative_transforms_without_rotation,
+    # compute_relative_transforms_world,
+    # compute_relative_transforms_without_rotation,
+    # compute_trel_stats,
     plot_series,
-    plot_series_with_prefix,
-    compute_trel_stats,
+    plot_series_with_prefix,    
+    compute_mean_disparity
 )
 from ..calibrate_points.lut import generate_lut, save_maps
 from .types import RuntimeState, CalibResult, VERSION
@@ -148,7 +149,8 @@ def _save_json(path: Path, data: Dict) -> None:
 def save_calibration_results_from_runtime_state(
     RuntimeState: RuntimeState,
     output_dir: Path,
-    save_error_plots_flag: bool = False,
+    debug_dir: Path,
+    save_error_plots_flag: bool = True,
     verbose: bool = True,
     generate_pseudo_backward: bool = True
 ) -> None:
@@ -197,8 +199,6 @@ def save_calibration_results_from_runtime_state(
         calib_json = _make_calibration_json(RuntimeState)
         _save_json(Path(output_dir) / 'LotaCalibrationResult.json', calib_json)
 
-    
-        
 
     if verbose:
         logger = get_logger()
@@ -207,10 +207,16 @@ def save_calibration_results_from_runtime_state(
     # 3. ------------------------------------------------------------
     # ErrorDotsReport.json 저장   
     err_dots_json = _make_err_dots_json(RuntimeState)
-    _save_json(Path(output_dir) / 'ErrorDotsReport.json', err_dots_json)
+    _save_json(debug_dir / 'ErrorDotsReport.json', err_dots_json)
     if verbose:
         logger = get_logger()
-        logger.info('[REPORTING] Calibration error dots JSON saved to %s', str(Path(output_dir) / 'ErrorDotsReport.json'))
+        logger.info('[REPORTING] Calibration error dots JSON saved to %s', str(debug_dir / 'ErrorDotsReport.json'))
+
+
+    if save_error_plots_flag and RuntimeState.folder_index_list is not None:
+        # 기존 카메라좌표계 시리즈        
+        rel_series_cam = compute_relative_transforms(RuntimeState.CALIB_RESULT.rvecs, RuntimeState.CALIB_RESULT.tvecs, RuntimeState.folder_index_list)
+        plot_series_with_prefix(rel_series_cam, debug_dir, prefix='translation_series')
 
     '''
     # Consistency report: translation_series 표준편차 vs extrinsics std 비교
@@ -374,15 +380,12 @@ def _get_lut_maps(
         if verbose:
             logger = get_logger()
             logger.info('[REPORTING] Generating LUT with policy: %s', TRANSPORT_CONFIG.lut_policy)
-        
-        # transport의 X 성분을 이용해 horizontal flip 결정
-        trel_x_sign = transport[0]  # transport vector의 X 성분
-        
+                
         map_x, map_y, lut_info = generate_lut(
             K = calib_result.camera_matrix,
             dist = calib_result.distortion,
             img_size = img_size,
-            trel_x_sign=trel_x_sign,            
+            transport = transport,            
             TRANSPORT_CONFIG=TRANSPORT_CONFIG            
         )
             
@@ -416,7 +419,10 @@ def convert_and_update_runtime_state(
     
     # Transport 및 Resolution 계산
     transport = compute_transport_vector(CALIB_RESULT.tvecs, folder_index_list, TRANSPORT_CONFIG.axis_sign)
-    resolution_um_per_px = compute_resolution_um_per_px(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
+    resolution_um_per_px, mean_Z_um = compute_resolution_from_tvecs(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
+
+    # Mean disparity 계산
+    mean_disparity: dict = compute_mean_disparity(camera_matrix=CALIB_RESULT.camera_matrix, mean_Z_mm=mean_Z_um/1000.0, baseline_mm=TRANSPORT_CONFIG.baseline_mm)
 
     # LUT 생성 및 저장
     map_x, map_y, lut_info = _get_lut_maps(CALIB_RESULT, image_size, transport, TRANSPORT_CONFIG, verbose)
@@ -428,6 +434,9 @@ def convert_and_update_runtime_state(
     RuntimeState.camera_matrix: np.ndarray = CALIB_RESULT.camera_matrix
     RuntimeState.distortion: np.ndarray = CALIB_RESULT.distortion
     RuntimeState.resolution: float = resolution_um_per_px
+    RuntimeState.mean_Z_um: float = mean_Z_um
+    RuntimeState.mean_disparity: dict = mean_disparity
+
     RuntimeState.reprojected: float = CALIB_RESULT.reprojected # or include intrinsic, rotation, translation error
     RuntimeState.size: Tuple[int, int] = image_size    
     RuntimeState.cam_height: int = image_size[0]

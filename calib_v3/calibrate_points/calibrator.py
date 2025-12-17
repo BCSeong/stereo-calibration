@@ -12,6 +12,12 @@ def calibrate_shared(RuntimeState: RuntimeState,
                      use_guess: bool = False,
                      remove_outliers: bool = False,
                      outlier_threshold: float = 2.0) -> CalibResult:
+
+    '''
+    입력 object_points_list 는 um scale --> mm scale 로 변환 후 처리
+    output tvecs 는 mm sacle --> um scale 로 변환 후 반환
+
+    '''
     flags = 0
     K0 = None
     dist0 = None
@@ -22,26 +28,29 @@ def calibrate_shared(RuntimeState: RuntimeState,
     else:
         get_logger().info('[INFO] No guess K provided')
 
-    object_points_list = [f.object_points for f in RuntimeState.FRAME_DATA_LIST]
-    image_points_list = [f.image_points for f in RuntimeState.FRAME_DATA_LIST]
+    object_points_list_mm = [f.object_points / 1000 for f in RuntimeState.FRAME_DATA_LIST] # um to mm
+    image_points_list_px = [f.image_points for f in RuntimeState.FRAME_DATA_LIST]
     image_size = RuntimeState.image_size
 
     
-    kept_indices = list(range(len(object_points_list)))
+    kept_indices = list(range(len(object_points_list_mm)))
     
     # Outlier 제거 (iterative approach)
     # Outlier 제거 시 object_points_list, image_points_list, kept_indices 이 업데이트됨
     if remove_outliers:
-        object_points_list, image_points_list, kept_indices = _remove_outlier_frames(
-            object_points_list, image_points_list, image_size, 
+        object_points_list_mm, image_points_list_px, kept_indices = _remove_outlier_frames(
+            object_points_list_mm, image_points_list_px, image_size, 
             outlier_threshold, K_guess, use_guess
         )
-        
-    ret, K, dist, rvecs, tvecs = cv2.calibrateCamera(
-        object_points_list, image_points_list, image_size, K0, dist0, flags=flags
+
+    
+    ret, K, dist, rvecs, tvecs_mm = cv2.calibrateCamera(
+        object_points_list_mm, image_points_list_px, image_size, K0, dist0, flags=flags
     )        
     std_intr, std_extr = None, None
-    per_view_errs = _compute_per_view_errors(object_points_list, image_points_list, rvecs, tvecs, K, dist)    
+    per_view_errs = _compute_per_view_errors(object_points_list_mm, image_points_list_px, rvecs, tvecs_mm, K, dist)    
+
+    tvecs = np.array(tvecs_mm) * 1000.0  # mm to um, ensure numpy array
 
     # deprecated it was used in comparison test btw calibrateCameraExtended and calibrateCamera, but not used now
     '''

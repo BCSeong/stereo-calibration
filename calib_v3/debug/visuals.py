@@ -8,6 +8,154 @@ import numpy as np
 from ..utils.config import DebugConfig
 DEBUG = DebugConfig()
 
+def _spiral_order(keys: Dict[Tuple[int, int], int]) -> List[Tuple[int, int]]:
+    """(0,0)에서 시작해 위→오른쪽→아래→왼쪽으로 감아 올라가는 나선 순서 생성."""
+    if not keys:
+        return []
+    key_set = set(keys)
+    max_r = max(max(abs(u), abs(v)) for (u, v) in key_set)
+    order: List[Tuple[int, int]] = []
+    if (0, 0) in key_set:
+        order.append((0, 0))
+    for r in range(1, max_r + 1):
+        x, y = -(r - 1), r  # 시작: 윗변의 좌측(예: r=1 → (0,1), r=2 → (-1,2))
+        # 오른쪽으로 이동
+        while x <= r:
+            if (x, y) in key_set:
+                order.append((x, y))
+            x += 1
+        x -= 1  # 마지막 valid 위치로 보정
+        # 아래로 이동
+        y -= 1
+        while y >= -r:
+            if (x, y) in key_set:
+                order.append((x, y))
+            y -= 1
+        y += 1
+        # 왼쪽으로 이동
+        x -= 1
+        while x >= -r:
+            if (x, y) in key_set:
+                order.append((x, y))
+            x -= 1
+        x += 1
+        # 위로 이동
+        y += 1
+        while y <= r:
+            if (x, y) in key_set:
+                order.append((x, y))
+            y += 1
+    return order
+
+
+def _draw_grid_mesh(vis: np.ndarray, pts_xy: np.ndarray, grid_uv_to_idx: Dict[Tuple[int, int], int]) -> None:
+    """격자 이웃 간 mesh를 그려 점 누락/왜곡을 시각적으로 강조."""
+    key_set = set(grid_uv_to_idx.keys())
+    edges: List[Tuple[Tuple[int, int], Tuple[int, int], float]] = []
+    lengths: List[float] = []
+    for (u, v), idx in grid_uv_to_idx.items():
+        for du, dv in ((1, 0), (0, 1)):  # 오른쪽, 아래쪽 이웃만 그려 중복 방지
+            nb = (u + du, v + dv)
+            if nb not in key_set:
+                continue
+            j = grid_uv_to_idx[nb]
+            x0, y0 = pts_xy[idx]
+            x1, y1 = pts_xy[j]
+            length = float(np.hypot(x1 - x0, y1 - y0))
+            edges.append(((int(round(x0)), int(round(y0))), (int(round(x1)), int(round(y1))), length))
+            lengths.append(length)
+    if not edges:
+        return
+    median_len = float(np.median(lengths)) if lengths else 0.0
+    median_len = median_len if median_len > 0 else 1.0
+    for (p0, p1, length) in edges:
+        thick = max(1, int(round(min(6.0, length / median_len * 2.0))))  # 길이에 비례해 두께
+        color = DEBUG.grid_color if length <= 1.2 * median_len else DEBUG.grid_error_color
+        cv2.line(vis, p0, p1, color, thick, cv2.LINE_AA)
+
+
+def save_grid_path_report(
+    image_path: Path,
+    gray: np.ndarray,
+    pts_xy: np.ndarray,
+    grid_uv_to_idx: Dict[Tuple[int, int], int],
+    Tc: Optional[np.ndarray],
+    out_path: Path,
+    triplet: Optional[Tuple[int, int, int]] = None,
+) -> None:
+    '''
+    2D grid 공간에서 나선형으로 (0,0) → (0,1) → (1,1) → (1,0) → (1,-1) → ...
+    순서로 인접 dot 사이의 arrow를 그림. 길이가 길수록 두께/색상으로 강조.
+    '''
+    if gray is None or pts_xy is None or len(pts_xy) == 0 or not grid_uv_to_idx:
+        return
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    # u/v 방향 화살표용 anchor 설정
+    anchor = (-2, -2)
+    u_tip = (3, -2)
+    v_tip = (-2, 3)
+
+    # 점 및 ID 라벨
+    for (u, v), idx in grid_uv_to_idx.items():
+        x, y = pts_xy[idx]
+        cv2.circle(vis, (int(round(x)), int(round(y))), DEBUG.grid_circle_radius, DEBUG.grid_color, 1, cv2.LINE_AA)
+        cv2.putText(vis, f"({u},{v})", (int(round(x))+3, int(round(y))-3), cv2.FONT_HERSHEY_SIMPLEX, 0.4, DEBUG.grid_color, 1, cv2.LINE_AA)
+
+
+    # 나선 경로 생성
+    order_uv = _spiral_order(grid_uv_to_idx)
+    order_idx = [grid_uv_to_idx[uv] for uv in order_uv if uv in grid_uv_to_idx]
+    if len(order_idx) >= 2:
+        lengths: List[float] = []
+        segments: List[Tuple[Tuple[int, int], Tuple[int, int], float]] = []
+        for i in range(len(order_idx) - 1):
+            a = order_idx[i]
+            b = order_idx[i + 1]
+            # grid 인접(맨해튼 거리 1) 쌍만 연결하고, 그 외의 jump는 건너뜀
+            du = abs(order_uv[i][0] - order_uv[i + 1][0])
+            dv = abs(order_uv[i][1] - order_uv[i + 1][1])
+            if (du + dv) != 1:
+                continue
+            x0, y0 = pts_xy[a]
+            x1, y1 = pts_xy[b]
+            length = float(np.hypot(x1 - x0, y1 - y0))
+            lengths.append(length)
+            segments.append(((int(round(x0)), int(round(y0))), (int(round(x1)), int(round(y1))), length))
+        median_len = float(np.median(lengths)) if lengths else 1.0
+        median_len = median_len if median_len > 0 else 1.0
+        for (p0, p1, length) in segments:
+            thick = max(1, int(round(min(8.0, 1.0 + length / median_len * 2.0))))
+            color = DEBUG.grid_color if length <= 1.2 * median_len else DEBUG.grid_error_color
+            cv2.arrowedLine(vis, p0, p1, color, thick, cv2.LINE_AA, tipLength=0.2)
+
+    # u/v 화살표 그리기 (img 좌표계)
+    if anchor in grid_uv_to_idx:
+        p0 = pts_xy[grid_uv_to_idx[anchor]]
+        if u_tip in grid_uv_to_idx:
+            pU = pts_xy[grid_uv_to_idx[u_tip]]
+            cv2.arrowedLine(vis, (int(round(p0[0])), int(round(p0[1]))), (int(round(pU[0])), int(round(pU[1]))),
+                            (255, 0, 0), 2, cv2.LINE_AA, tipLength=0.4)  # blue: u
+            cv2.putText(vis, "u", (int(round((p0[0]+pU[0])*0.5)), int(round((p0[1]+pU[1])*0.5))),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+        if v_tip in grid_uv_to_idx:
+            pV = pts_xy[grid_uv_to_idx[v_tip]]
+            cv2.arrowedLine(vis, (int(round(p0[0])), int(round(p0[1]))), (int(round(pV[0])), int(round(pV[1]))),
+                            (0, 0, 255), 2, cv2.LINE_AA, tipLength=0.4)  # red: v
+            cv2.putText(vis, "v", (int(round((p0[0]+pV[0])*0.5)), int(round((p0[1]+pV[1])*0.5))),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+
+    cv2.imwrite(str(out_path), vis)
+
+    # 나선 경로에서 실제로 그린 grid 인접(맨해튼 1) 구간의 길이 통계 반환
+    dist_stats = {
+        "mean": float(np.mean(lengths)) if lengths else 0.0,
+        "std": float(np.std(lengths)) if lengths else 0.0,
+        "max": float(np.max(lengths)) if lengths else 0.0,
+        "min": float(np.min(lengths)) if lengths else 0.0,
+        "count": len(lengths)
+    }
+    return dist_stats
 
 def save_grid_report(
     image_path: Path,
@@ -52,6 +200,9 @@ def save_grid_report(
     '''
     if gray is not None and len(pts_xy) > 0 and grid_uv_to_idx:
         vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+        # 격자 mesh를 먼저 그려 점 누락/왜곡을 한눈에 확인
+        _draw_grid_mesh(vis, pts_xy, grid_uv_to_idx)
         
         # Triplet 강조 (save_detection_overlay와 동일한 방식)
         if triplet is not None:
