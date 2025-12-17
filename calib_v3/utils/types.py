@@ -77,6 +77,7 @@ class AppConfig:
     save_reproj_png: bool = True # 디버깅에 큰 도움 안됨
     save_points: bool = False # 디버깅에 큰 도움 안됨
     save_error: bool = True # 각 이미지 간 물리적 거리, 필수
+    save_remap_preview: bool = True # remap 이후 이미지가 x+ 방향으로 이동하는지 확인하기 위해 성공한 프레임 중 처음 3개만 생성
     verbose: bool = True
     
     # obj point 와 img point 쌍으로 camera calibration 시 outlier 제거를 위한 임계값 설정.

@@ -7,7 +7,6 @@ from pprint import pprint
 import numpy as np
 import cv2
 from typing import List
-import math
 
 from .cli import build_argparser, update_dataclass_from_namespace
 from .get_points.three_dots import ThreeDotDetector
@@ -15,7 +14,8 @@ from .utils.logger import init_logger, get_logger
 from .calibrate_points.calibrator import calibrate_shared
 from .utils.reporting import convert_and_update_runtime_state, save_calibration_results_from_runtime_state
 from .utils.types import FrameData, AppConfig, RuntimeState, CalibResult, update_runtime_state_by_kept_indices
-from .debug.visuals import save_detection_overlay, save_grid_report, save_reprojection_report, save_grid_path_report
+from .debug.visuals import save_detection_overlay, save_reprojection_report, save_grid_path_report, save_remap_report
+from .utils.analysis import compute_grid_orientation
 from .utils.config import BlobDetectorConfig, GridConfig, TransportConfig, AffineCandidateConfig, ScoringConfig
 
 
@@ -112,36 +112,6 @@ def run(argv=None) -> RuntimeState:
     STATE = RuntimeState()
     frame_stats: List[dict] = []
 
-    def compute_grid_orientation(grid_uv_to_idx, pts_xy):
-        if not grid_uv_to_idx or pts_xy is None:
-            return {"u_deg": 0.0, "v_deg": 0.0}
-        u_vecs = []
-        v_vecs = []
-        key_set = set(grid_uv_to_idx.keys())
-        for (u, v), idx in grid_uv_to_idx.items():
-            if (u + 1, v) in key_set:
-                j = grid_uv_to_idx[(u + 1, v)]
-                u_vecs.append(pts_xy[j] - pts_xy[idx])
-            if (u, v + 1) in key_set:
-                j = grid_uv_to_idx[(u, v + 1)]
-                v_vecs.append(pts_xy[j] - pts_xy[idx])
-
-        def mean_angle(vecs):
-            if not vecs:
-                return 0.0, np.zeros(2, dtype=np.float64)
-            arr = np.array(vecs, dtype=np.float64)
-            ang = np.arctan2(arr[:, 1], arr[:, 0])
-            mean_ang = math.degrees(math.atan2(np.mean(np.sin(ang)), np.mean(np.cos(ang))))
-            mean_vec = np.mean(arr, axis=0)
-            return float(mean_ang), mean_vec
-
-        u_deg, u_mean_vec = mean_angle(u_vecs)
-        v_deg, v_mean_vec = mean_angle(v_vecs)
-        return {
-            "u_deg": u_deg,
-            "v_deg": v_deg
-        }
-    
     # 캘리브레이션용 points 수집 (types.py 구조 사용)
     STATE.FRAME_DATA_LIST: List[FrameData] = []
     import gc    
@@ -437,6 +407,38 @@ def run(argv=None) -> RuntimeState:
                 verbose=config.verbose
             )
                 
+            # DEBUG remap 결과 예시 생성
+            if config.save_remap_preview:
+                if config.verbose:
+                    logger.info('[INFO] Generating remap reports for %d kept frames', len(STATE.CALIB_RESULT.kept_indices))
+                # remap 이후 이미지가 x+ 방향으로 이동하는지 확인하기 위해 성공한 프레임 중 처음 3개만 생성
+                if STATE.map_x is not None and STATE.map_y is not None:
+                    for new_i, old_i in enumerate(STATE.CALIB_RESULT.kept_indices[:3]):
+                        frame = STATE.FRAME_DATA_LIST[old_i]
+                        # 이미지 다시 로드
+                        gray = cv2.imread(str(frame.image_path), cv2.IMREAD_GRAYSCALE)
+                        if gray is None:
+                            if config.verbose:
+                                logger.warning('[WARN] Failed to load image: %s', frame.image_path)
+                            continue
+                        remap_path = config.debug_dir / f"{frame.image_path.stem}_remap_preview_{new_i}.png"
+                        save_remap_report(
+                            image_path=frame.image_path,
+                            gray=gray,
+                            image_points=STATE.image_points_list[new_i],
+                            object_points=STATE.object_points_list[new_i],
+                            K=STATE.CALIB_RESULT.camera_matrix,
+                            dist=STATE.CALIB_RESULT.distortion,
+                            rvec=STATE.CALIB_RESULT.rvecs[new_i],
+                            tvec=STATE.CALIB_RESULT.tvecs[new_i],
+                            out_path=remap_path,
+                            map_x=STATE.map_x,
+                            map_y=STATE.map_y
+                        )
+                else:
+                    if config.verbose:
+                        logger.warning('[WARN] map_x or map_y is None, skipping remap report generation')
+            
             # DEBUG reprojection_report 재투영 리포트 생성
             if config.save_reproj_png:
                 if config.verbose:

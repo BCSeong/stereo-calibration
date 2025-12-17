@@ -41,6 +41,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('--save_points', dest='save_points', action='store_true', default=default_config.save_points, help='save points')    
     ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error, help='save error')    
     ap.add_argument('--save_reproj_png', dest='save_reproj_png', action='store_true', default=default_config.save_reproj_png, help='save reprojection figure and png')
+    ap.add_argument('--save_remap_preview', dest='save_remap_preview', action='store_true', default=default_config.save_remap_preview, help='save remap preview')
     
     # outlier removal ---------------------------------------------------------
     ap.add_argument('--remove_outliers', dest='remove_outliers', action='store_true', default=default_config.remove_outliers, help='remove outliers, default is False')

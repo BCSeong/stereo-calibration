@@ -81,7 +81,7 @@ def _build_rectify_map(K: np.ndarray, dist: np.ndarray, img_size: Tuple[int, int
     return map_x, map_y, P_shift, newH, newW
 
 
-def _apply_flip_if_needed(map_x: np.ndarray, map_y: np.ndarray, transport: Tuple[float, float, float], transport_axis_sign: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
+def _apply_flip_if_needed(map_x: np.ndarray, map_y: np.ndarray, transport: Tuple[float, float, float], hflip_on_negative_mean_trel_x: bool) -> Tuple[np.ndarray, np.ndarray, bool]:
     """수평 플립 정책 적용 (TransportConfig 기준)
     
     Args:
@@ -112,8 +112,7 @@ def _apply_flip_if_needed(map_x: np.ndarray, map_y: np.ndarray, transport: Tuple
     # transport vector 의 max component 찾기
     max_component_idx = np.argmax(np.abs(transport))
     
-    # reference_axis_sign 와 estimated_transport_sign 의 부호를 판단하여 option 1, 2, 3, 4 중 하나를 선택
-    reference_axis_sign = transport_axis_sign[max_component_idx]
+    # estimated_transport_sign 의 부호를 판단하여 option 1, 2, 3, 4 중 하나를 선택
     estimated_transport_sign = transport[max_component_idx]
     
     # option 1
@@ -217,7 +216,7 @@ def generate_lut(
     
     # trasnport vector 의 max component 의 부호에 따라 X-axis <-> Y-axis     
     # 수평/수직 플립 적용 (TransportConfig 정책 사용)
-    map_x, map_y, did_flip, did_swap = _apply_flip_if_needed(map_x, map_y, transport, TRANSPORT_CONFIG.axis_sign, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
+    map_x, map_y, did_flip, did_swap = _apply_flip_if_needed(map_x, map_y, transport, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
 
     # did_swap = True 이면 remap 이후 이미지가 90deg 회전되어 map_x 가 가지는 최대 index 는 height 가 되고, map_y 가 가지는 최대 index 는 width 가 된다.
     max_index_for_map_x = h if not did_swap else w
@@ -249,6 +248,7 @@ def generate_lut(
         'original_size': img_size,        
         'crop_bbox': crop_bbox,
         'did_flip': did_flip,
+        'did_swap': did_swap,
         'policy': TRANSPORT_CONFIG.lut_policy,
         'margin': TRANSPORT_CONFIG.lut_crop_margin
     }

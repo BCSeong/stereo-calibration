@@ -135,13 +135,13 @@ def save_grid_path_report(
         if u_tip in grid_uv_to_idx:
             pU = pts_xy[grid_uv_to_idx[u_tip]]
             cv2.arrowedLine(vis, (int(round(p0[0])), int(round(p0[1]))), (int(round(pU[0])), int(round(pU[1]))),
-                            (255, 0, 0), 2, cv2.LINE_AA, tipLength=0.4)  # blue: u
+                            (255, 0, 0), 4, cv2.LINE_AA, tipLength=0.2)  # blue: u
             cv2.putText(vis, "u", (int(round((p0[0]+pU[0])*0.5)), int(round((p0[1]+pU[1])*0.5))),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
         if v_tip in grid_uv_to_idx:
             pV = pts_xy[grid_uv_to_idx[v_tip]]
             cv2.arrowedLine(vis, (int(round(p0[0])), int(round(p0[1]))), (int(round(pV[0])), int(round(pV[1]))),
-                            (0, 0, 255), 2, cv2.LINE_AA, tipLength=0.4)  # red: v
+                            (0, 0, 255), 4, cv2.LINE_AA, tipLength=0.2)  # red: v
             cv2.putText(vis, "v", (int(round((p0[0]+pV[0])*0.5)), int(round((p0[1]+pV[1])*0.5))),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
@@ -412,5 +412,62 @@ def save_reprojection_report(
                 
     except Exception as e:
         print(f"Error saving reprojection plot: {e}")
+
+
+def _remap_image(src_img: np.ndarray, map_x: np.ndarray, map_y: np.ndarray, interpolation: int = cv2.INTER_LINEAR, border_mode: int = cv2.BORDER_CONSTANT, border_value: float = 0.0) -> np.ndarray:
+    """cv2.remap을 사용해 src_img를 재배치. 채널 수/비트심도 보존.
+    
+    Args:
+        src_img: 원본 이미지
+        map_x: X 방향 remap 맵
+        map_y: Y 방향 remap 맵
+        interpolation: 보간 방법 (기본값: cv2.INTER_LINEAR)
+        border_mode: 경계 처리 방법 (기본값: cv2.BORDER_CONSTANT)
+        border_value: 경계 값 (기본값: 0.0)
+    
+    Returns:
+        remap된 이미지
+    """
+    dst = cv2.remap(src_img, map_x, map_y, interpolation=interpolation, borderMode=border_mode, borderValue=border_value)
+    return dst
+
+
+def save_remap_report(
+    image_path: Path,
+    gray: np.ndarray,
+    image_points: np.ndarray,
+    object_points: np.ndarray,
+    K: np.ndarray,
+    dist: np.ndarray,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    out_path: Path,
+    map_x: Optional[np.ndarray] = None,
+    map_y: Optional[np.ndarray] = None,
+) -> None:
+    """remap LUT 적용 결과 이미지 저장.
+    
+    Args:
+        image_path: 원본 이미지 경로
+        gray: 원본 그레이스케일 이미지
+        image_points: 2D 이미지 포인트 (사용하지 않음, 호환성 유지)
+        object_points: 3D 객체 포인트 (사용하지 않음, 호환성 유지)
+        K: 카메라 내부 파라미터 행렬 (사용하지 않음, 호환성 유지)
+        dist: 왜곡 계수 (사용하지 않음, 호환성 유지)
+        rvec: 회전 벡터 (사용하지 않음, 호환성 유지)
+        tvec: 이동 벡터 (사용하지 않음, 호환성 유지)
+        out_path: 출력 경로
+        map_x: X 방향 remap 맵 (None이면 remap 생략)
+        map_y: Y 방향 remap 맵 (None이면 remap 생략)
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # remap 적용
+    if map_x is not None and map_y is not None:
+        remapped = _remap_image(gray, map_x, map_y, interpolation=cv2.INTER_LINEAR, border_mode=cv2.BORDER_CONSTANT, border_value=0.0)
+        cv2.imwrite(str(out_path), remapped)
+    else:
+        # map_x 또는 map_y가 None이면 원본 이미지만 저장
+        cv2.imwrite(str(out_path), gray)
 
 

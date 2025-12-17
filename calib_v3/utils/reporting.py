@@ -391,6 +391,8 @@ def _get_lut_maps(
             transport = transport,            
             TRANSPORT_CONFIG=TRANSPORT_CONFIG            
         )
+
+        # TODO : logger info 로 LUT 정책과 transport 결과 비교하여 출력.swap, flip 여부 등 출력.
             
     except Exception as e:
         logger = get_logger()
@@ -420,31 +422,69 @@ def convert_and_update_runtime_state(
     folder_index_list = RuntimeState.folder_index_list
     image_size = RuntimeState.image_size
     
+    # mean camera focal length 계산
+    cam_focal: float = (CALIB_RESULT.camera_matrix[0, 0] + CALIB_RESULT.camera_matrix[1, 1]) * 0.5
+    
     # Transport 및 Resolution 계산
-    transport = compute_transport_vector(CALIB_RESULT.tvecs, folder_index_list, TRANSPORT_CONFIG.axis_sign)
-    resolution_um_per_px, mean_Z_um = compute_resolution_from_tvecs(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
+    transport = compute_transport_vector(CALIB_RESULT.tvecs, folder_index_list)
+    
+    # 정사투영 목표 Z 위치 제공 (stereo target을 촬영한 Z 위치임)
+    target_Z_um, resolution_um_per_px_at_target_Z_um = compute_resolution_from_tvecs(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
 
     # Mean disparity 계산
-    mean_disparity: dict = compute_mean_disparity(camera_matrix=CALIB_RESULT.camera_matrix, mean_Z_mm=mean_Z_um/1000.0, baseline_mm=TRANSPORT_CONFIG.baseline_mm)
+    disparity_at_target_Z_um_with_predefined_baseline: dict = compute_mean_disparity(focal_length_px=cam_focal, target_Z_um=target_Z_um, baseline_um=TRANSPORT_CONFIG.predefined_baseline_um)
 
     # LUT 생성 및 저장
     map_x, map_y, lut_info = _get_lut_maps(CALIB_RESULT, image_size, transport, TRANSPORT_CONFIG, verbose)
 
+    # Calibration.json 에서 정사투영 목표 Z 위치 제공 (stereo target을 촬영한 Z 위치임)
+    reprojection_pior: dict = {
+        'target_Z_um': target_Z_um,
+        'predefined_baseline_um': TRANSPORT_CONFIG.predefined_baseline_um,
+        'resolution_um_per_px_at_target_Z_um': resolution_um_per_px_at_target_Z_um,
+        'disparity_at_target_Z_um_with_predefined_baseline': disparity_at_target_Z_um_with_predefined_baseline        
+    }
+
+    '''
+    !!! reprojection_prior 은 stereo matching 후 생성된 depth map 을 이용해서 3D point cloud 를 생성 뒤
+    orthographic projection 을 통해 생성된 2D image 를 이용해서 생성된 것임.
+    
+    필요 파라미터와 용도:
+    target_Z_um: 정사투영할 평면 위치.
+    resolution_at_target_Z: um_per_px = target_Z_um / fx_rect (y방향은 fy_rect). 정사영상의 물리 해상도.
+    disparity_at_target_Z: d_target = fx_rect * baseline_um / target_Z_um. 이론 시차(검증/스케일 참고용).
+    camera_matrix_rect (rectified fx, fy, cx, cy) + map_x/map_y (undistort/rectify LUT).    
+    map_x/map_y로 원본 이미지를 리매핑 → rectified 좌표계에서 stereo 매칭.
+    camera_matrix의 fx, fy, cx, cy를 깊이/좌표 변환에 사용. 
+
+    유저가 사용하는 절차(정사투영용)
+    1) map_x/map_y로 left/right 영상을 undistort+rectify. (remap 으로 인해 camera_matrix 의 fx, fy 는 변경되진 않으나 주점(cx, cy) 는 변경될 수 있음.)
+    2) rectified 좌표계에서 disparity map 계산.
+    3) 깊이 복원: Z_px = f * baseline_um / disparity_px (단위 일관: B,Z um, f,d px).
+        - f 는 camera_matrix에서 제공
+        - baseline_um 은 left/right 카메라 간 거리로 제공됨
+        - disparity_px 는 rectified 좌표계에서 stereo 매칭 결과로 제공됨
+    4) 3D 좌표 변환:
+        - X = (x - cx) * Z_px / f,
+        - Y = (y - cy) * Z_px / f,
+        - Z = Z_px.
+    5) 정사투영: 원하는 target_Z_um 평면에 투영/보간하여 2D 맵 생성. 이때 um/px는 resolution_at_target_Z_um를 사용.
+
+    '''
     
 
     # !!!!!!!!!!!!!!!!!!!!!!
     # RuntimeState 업데이트
     RuntimeState.camera_matrix: np.ndarray = CALIB_RESULT.camera_matrix
     RuntimeState.distortion: np.ndarray = CALIB_RESULT.distortion
-    RuntimeState.resolution: float = resolution_um_per_px
-    RuntimeState.mean_Z_um: float = mean_Z_um
-    RuntimeState.mean_disparity: dict = mean_disparity
+    RuntimeState.resolution: float = resolution_um_per_px_at_target_Z_um
+    RuntimeState.reprojection_pior: Dict = reprojection_pior    
 
     RuntimeState.reprojected: float = CALIB_RESULT.reprojected # or include intrinsic, rotation, translation error
     RuntimeState.size: Tuple[int, int] = image_size    
     RuntimeState.cam_height: int = image_size[0]
     RuntimeState.cam_width: int = image_size[1]    
-    RuntimeState.cam_focal: float = (CALIB_RESULT.camera_matrix[0, 0] + CALIB_RESULT.camera_matrix[1, 1]) * 0.5
+    RuntimeState.cam_focal: float = cam_focal
     RuntimeState.transport: Tuple[float, float, float] = transport    
 
     # RuntimeState 업데이트 (LUT 정보)    
