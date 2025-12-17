@@ -96,13 +96,16 @@ def _make_calibration_json(RuntimeState: RuntimeState, backward_RuntimeState: Op
         'cam_center_y': RuntimeState.cam_center_y,        
         'map_width': RuntimeState.map_width,
         'map_height': RuntimeState.map_height,
-        'version': VERSION,
+        'mean_Z_um': RuntimeState.mean_Z_um,
+        'mean_disparity': RuntimeState.mean_disparity
     }
     if backward_RuntimeState is not None:
         out['transport_backward'] = backward_RuntimeState.transport
         out['cam_center_x_backward'] = backward_RuntimeState.cam_center_x
         out['cam_center_y_backward'] = backward_RuntimeState.cam_center_y
         out['version'] = VERSION + '_with_backwardInfo'
+
+    out['version'] = VERSION
     return out
 
 

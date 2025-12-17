@@ -422,7 +422,7 @@ def run(argv=None) -> RuntimeState:
                 RuntimeState=STATE,
                 kept_indices=STATE.CALIB_RESULT.kept_indices
             )
-            # 결과 변환 및 저장
+            # 결과 변환 
             STATE = convert_and_update_runtime_state(
                 RuntimeState=STATE,
                 TRANSPORT_CONFIG=TRANSPORT_CONFIG,                
