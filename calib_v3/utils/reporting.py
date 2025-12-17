@@ -96,8 +96,7 @@ def _make_calibration_json(RuntimeState: RuntimeState, backward_RuntimeState: Op
         'cam_center_y': RuntimeState.cam_center_y,        
         'map_width': RuntimeState.map_width,
         'map_height': RuntimeState.map_height,
-        'mean_Z_um': RuntimeState.mean_Z_um,
-        'mean_disparity': RuntimeState.mean_disparity
+        'reprojection_prior': RuntimeState.reprojection_prior
     }
     if backward_RuntimeState is not None:
         out['transport_backward'] = backward_RuntimeState.transport
@@ -438,7 +437,7 @@ def convert_and_update_runtime_state(
     map_x, map_y, lut_info = _get_lut_maps(CALIB_RESULT, image_size, transport, TRANSPORT_CONFIG, verbose)
 
     # Calibration.json 에서 정사투영 목표 Z 위치 제공 (stereo target을 촬영한 Z 위치임)
-    reprojection_pior: dict = {
+    reprojection_prior: dict = {
         'target_Z_um': target_Z_um,
         'predefined_baseline_um': TRANSPORT_CONFIG.predefined_baseline_um,
         'resolution_um_per_px_at_target_Z_um': resolution_um_per_px_at_target_Z_um,
@@ -478,7 +477,7 @@ def convert_and_update_runtime_state(
     RuntimeState.camera_matrix: np.ndarray = CALIB_RESULT.camera_matrix
     RuntimeState.distortion: np.ndarray = CALIB_RESULT.distortion
     RuntimeState.resolution: float = resolution_um_per_px_at_target_Z_um
-    RuntimeState.reprojection_pior: Dict = reprojection_pior    
+    RuntimeState.reprojection_prior: Dict = reprojection_prior    
 
     RuntimeState.reprojected: float = CALIB_RESULT.reprojected # or include intrinsic, rotation, translation error
     RuntimeState.size: Tuple[int, int] = image_size    

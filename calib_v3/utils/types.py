@@ -138,9 +138,8 @@ class RuntimeState:
     cam_width: Optional[int] = None # native image width
     cam_height: Optional[int] = None # native image height    
     cam_focal: Optional[float] = None # focal length in pixels
-    transport: Optional[Tuple[float, float, float]] = None # transport vector (x, y, z)    
-    mean_Z_um: Optional[float] = None # mean Z-position of the center fiducial in um
-    mean_disparity: Optional[dict] = None # mean disparity in predefined baseline (mm)
+    transport: Optional[Tuple[float, float, float]] = None # transport vector (x, y, z)        
+    reprojection_prior: Optional[dict] = None # reprojection prior information, including target_Z_um, predefined_baseline_um, resolution_um_per_px_at_target_Z_um, disparity_at_target_Z_um_with_predefined_baseline
 
     # calibration_lut_forward.json 산출물: remap lut related
     cam_center_x: Optional[float] = None # LUT center x coordinate
