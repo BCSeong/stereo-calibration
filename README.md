@@ -33,6 +33,9 @@ python -m calib_v3.main <입력_이미지_폴더> <출력_폴더>
 #### 주요 옵션
 
 ```bash
+# Camera Calibration 에서 object sampleing resolution mm/px 가 주어진 경우
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M -r 10
+
 # 디버그 이미지 저장 활성화 (기본값: True)
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_debug
 

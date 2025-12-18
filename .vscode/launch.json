@@ -23,6 +23,29 @@
             "stopOnEntry": false
         },     
         {
+            "name": "Python: sample_imgs_KYICI_4M_with_CamCalResolutionPrior",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "calib_v3.main",
+            "args": [
+                "sample_imgs_KYICI_4M",
+                "output_4M_KY_with_camcalResolutionPrior",
+                "-p",
+                "500",
+                "-b",
+                "25",
+                "--skip",
+                "1",
+                "-r",
+                "10"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
+            "stopOnEntry": false
+        },           
+        {
             "name": "Python: sample_imgs_16M_lota_unit1",
             "type": "debugpy",
             "request": "launch",

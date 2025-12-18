@@ -11,8 +11,9 @@ def compute_mean_disparity(focal_length_px: float, target_Z_um: float, baseline_
     if target_Z_um <= 0:
         return {"mean_disparity": 0.0, "predefined_baseline_um": baseline_um}
     disparity = focal_length_px * (baseline_um / target_Z_um)
-    return {"predefined_baseline_um": baseline_um, "mean_disparity": disparity, "target_Z_um": target_Z_um}
-
+    # return {"predefined_baseline_um": baseline_um, "mean_disparity": disparity, "target_Z_um": target_Z_um}
+    return disparity
+    
 def compute_transport_vector(
     tvecs: List[np.ndarray], 
     by_folder: Dict[str, List[int]]

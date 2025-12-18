@@ -86,7 +86,7 @@ def _make_calibration_json(RuntimeState: RuntimeState, backward_RuntimeState: Op
         'camera_matrix': RuntimeState.camera_matrix.tolist(),
         'distortion': RuntimeState.distortion.ravel().tolist(),
         'resolution': float(RuntimeState.resolution),
-        'reprojected': float(RuntimeState.reprojected),
+        'error':{'reprojected': float(RuntimeState.reprojected)},
         'size': [RuntimeState.cam_width, RuntimeState.cam_height],
         'cam_width': RuntimeState.cam_width,
         'cam_height': RuntimeState.cam_height,
@@ -428,7 +428,14 @@ def convert_and_update_runtime_state(
     transport = compute_transport_vector(CALIB_RESULT.tvecs, folder_index_list)
     
     # 정사투영 목표 Z 위치 제공 (stereo target을 촬영한 Z 위치임)
-    target_Z_um, resolution_um_per_px_at_target_Z_um = compute_resolution_from_tvecs(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
+    # 만약 camera calibration 에서 pixel resolution (mm/px) 가 제공된다면 동일한 resolution 이 나오도록 이를 사용해서 target_Z_um 을 계산함.
+    if RuntimeState.resolution is not None:
+        resolution_um_per_px_at_target_Z_um = RuntimeState.resolution_from_CamCalResult_um_per_px 
+        target_Z_um = RuntimeState.resolution_from_CamCalResult_um_per_px * cam_focal
+    else:
+        target_Z_um, resolution_um_per_px_at_target_Z_um = compute_resolution_from_tvecs(CALIB_RESULT.camera_matrix, CALIB_RESULT.tvecs)
+
+    
 
     # Mean disparity 계산
     disparity_at_target_Z_um_with_predefined_baseline: dict = compute_mean_disparity(focal_length_px=cam_focal, target_Z_um=target_Z_um, baseline_um=TRANSPORT_CONFIG.predefined_baseline_um)

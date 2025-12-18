@@ -19,6 +19,9 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('src', type=str, help='source directory')
     ap.add_argument('dst', type=str, help='destination directory')
     
+    # prior information -------------------------------------------------------------
+    ap.add_argument('-r', '--resolution_from_CamCalResult_um_per_px', dest='resolution_from_CamCalResult_um_per_px', type=float, default=default_config.resolution_from_CamCalResult_um_per_px, help='resolution from camera calibration result, if None, it is calculated from mean Z position of blobs from stereo target')
+    
     # blob params -------------------------------------------------------------        
     ap.add_argument('-b', '--blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 35')
 

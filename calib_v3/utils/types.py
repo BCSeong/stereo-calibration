@@ -42,6 +42,11 @@ class AppConfig:
     skip: int = 1 # 프레임 중 일부만 사용하여 고속화 할 때 사용. 1이면 모든 프레임을 처리. 10이면 10번째 프레임마다 1회 처리.
 
     #########################################
+    # Prior information
+    #########################################
+    resolution_from_CamCalResult_um_per_px: Optional[float] = None # resolution from camera calibration result, 이게 주어지면 stereo calibration 시 resolution 을 이것으로 사용함.
+
+    #########################################
     # GridConfig
     #########################################           
     # 아래 파라미터는 캘리브레이션 타겟에 따라 반드시 변경되어야 합니다.        
@@ -156,6 +161,7 @@ class RuntimeState:
     cam_center_y_backward: Optional[float] = None # backward LUT center y coordinate    
 
     # 저장 용도의 리스트와 딕셔너리
+    resolution_from_CamCalResult_um_per_px: Optional[float] = None # resolution from camera calibration result, 이게 주어지면 stereo calibration 시 resolution 을 이것으로 사용함.
     CALIB_RESULT: Optional[CalibResult] = None # camera calibration result dataclass
     FRAME_DATA_LIST: List[FrameData] = field(default_factory=list) # 각 native image 프레임 별 image_points 와 object_points 저장
     image_size: Optional[Tuple[int, int]] = None # naitve 이미지 크기 저장
