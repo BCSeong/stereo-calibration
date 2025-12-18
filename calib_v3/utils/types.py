@@ -21,7 +21,9 @@ VERSION_HISTORY: List[VersionEntry] = [
     VersionEntry("2025-12-11", "b.seong@kohyoung.com", "Edit RuntimeState to include additional information and identical with AIT-ICI convention"),
     VersionEntry("2025-12-12", "b.seong@kohyoung.com", "Update backward LUT generation to include additional information"),
     VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add additaional _compute_per_view_errors to CalibResult to utilze opencv's calibrateCamera not extended version"),
-    VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add base disparity and working distance info on LotaCalibrationResult.json")
+    VersionEntry("2025-12-14", "b.seong@kohyoung.com", "Add base disparity and working distance info on LotaCalibrationResult.json"),
+    VersionEntry("2025-12-16", "b.seong@kohyoung.com", "Enhanced grid_path_report including grid orientation and spairal pattern and add Blob_Grid_Assignment_Summary.html for blob and grid assignment summary"),
+    VersionEntry("2025-12-17", "b.seong@kohyoung.com", "Add resolution_from_CamCalResult_um_per_px to use user provided resolution from camera calibration result")
 ]
 
 CURRENT_VERSION: VersionEntry = VERSION_HISTORY[-1]

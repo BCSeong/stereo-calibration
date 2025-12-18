@@ -316,6 +316,7 @@ def run(argv=None) -> RuntimeState:
         dict_to_table("AffineCandidateConfig", asdict(AFFINE_CANDIDATE_CONFIG)),
         dict_to_table("ScoringConfig", asdict(SCORE_CONFIG)),
         dict_to_table("TransportConfig", asdict(TRANSPORT_CONFIG)),
+        dict_to_table("AppConfig", asdict(config))
     ]
 
     frame_table = list_of_dicts_to_table("Frame stats", frame_stats)
@@ -392,6 +393,11 @@ def run(argv=None) -> RuntimeState:
                 RuntimeState=STATE,
                 kept_indices=STATE.CALIB_RESULT.kept_indices
             )
+
+            # CamCalibration Result 에서 제공된 resolution 이 있으면 이를 RuntimeState 에 업데이트 함.
+            if config.resolution_from_CamCalResult_um_per_px is not None:
+                STATE.resolution_from_CamCalResult_um_per_px = config.resolution_from_CamCalResult_um_per_px
+
             # 결과 변환 
             STATE = convert_and_update_runtime_state(
                 RuntimeState=STATE,
