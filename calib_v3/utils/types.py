@@ -53,7 +53,7 @@ class AppConfig:
     #########################################           
     # 아래 파라미터는 캘리브레이션 타겟에 따라 반드시 변경되어야 합니다.        
     dot_pitch_um: float = 700 # blob 사이 거리 in um
-    max_grid_size: int = 100 # grid 최대 크기가 N X N cells 인지. N 보다 max_grid_size 가 커야 안정적.
+    max_grid_size: int = 100 # grid 최대 크기가 N X N cells 인지. N 보다 max_grid_size 가 반드시 커야 함.
 
     #########################################
     # BlobDetectorConfig

@@ -6,7 +6,7 @@ from pathlib import Path
 from pprint import pprint
 import numpy as np
 import cv2
-from typing import List
+from typing import List, Optional
 
 from .cli import build_argparser, update_dataclass_from_namespace
 from .get_points.three_dots import ThreeDotDetector
@@ -19,10 +19,30 @@ from .utils.analysis import compute_grid_orientation
 from .utils.config import BlobDetectorConfig, GridConfig, TransportConfig, AffineCandidateConfig, ScoringConfig
 
 
+
+def _prompt_non_empty(prompt: str) -> str:
+    """Prompt for a non-empty string (e.g. path); retry until valid."""
+    while True:
+        raw = input(prompt).strip()
+        if raw:
+            return raw
+        print("Value is required.")
+
+
 def run(argv=None) -> RuntimeState:
     ap = build_argparser()
     args = ap.parse_args(argv)
-    
+
+    # Interactive prompt for required args when omitted (English)
+    if args.src is None:
+        args.src = _prompt_non_empty("Enter source directory: ")
+    if args.dst is None:
+        args.dst = _prompt_non_empty("Enter destination directory: ")
+    if args.blob_dia_in_px is None:
+        args.blob_dia_in_px = _prompt_non_empty("Enter blob diameter in pixels: ")
+    if args.dot_pitch_um is None:
+        args.dot_pitch_um = _prompt_non_empty("Enter dot pitch in um: ")
+
     # AppConfig 생성 및 CLI 인자로 업데이트
     config = AppConfig(
         src=Path(args.src),

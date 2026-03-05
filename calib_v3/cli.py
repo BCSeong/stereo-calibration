@@ -15,15 +15,15 @@ def build_argparser() -> argparse.ArgumentParser:
     
     ap = argparse.ArgumentParser(description='calib_v3 simple blob scan')
     
-    # positional --------------------------------------------------------------
-    ap.add_argument('src', type=str, help='source directory')
-    ap.add_argument('dst', type=str, help='destination directory')
+    # positional (prompted interactively if omitted) ---------------------------
+    ap.add_argument('src', type=str, nargs='?', default=None, help='source directory')
+    ap.add_argument('dst', type=str, nargs='?', default=None, help='destination directory')
     
     # prior information -------------------------------------------------------------
     ap.add_argument('-r', '--resolution_from_CamCalResult_um_per_px', dest='resolution_from_CamCalResult_um_per_px', type=float, default=default_config.resolution_from_CamCalResult_um_per_px, help='resolution from camera calibration result, if None, it is calculated from mean Z position of blobs from stereo target')
     
     # blob params -------------------------------------------------------------        
-    ap.add_argument('-b', '--blob_dia_in_px', dest='blob_dia_in_px', type=float, default=default_config.blob_dia_in_px, help='blob diameter in pixels, default is 35')
+    ap.add_argument('-b', '--blob_dia_in_px', dest='blob_dia_in_px', type=float, default=None, help='blob diameter in pixels (prompted if omitted)')
 
     ap.add_argument('--min_area', dest='min_area', type=float, default=default_config.min_area, help='minimum area of blob, if None, it is calculated from blob_dia_in_px')
     ap.add_argument('--max_area', dest='max_area', type=float, default=default_config.max_area, help='maximum area of blob, if None, it is calculated from blob_dia_in_px')
@@ -31,7 +31,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument('--binarize_thd', dest='bin_threshold', type=float, default=default_config.binarize_thd, help='binarization threshold, default is "Otsu"')
     
     # pattern/camera scale ---------------------------------------------------------
-    ap.add_argument('-p', '--dot_pitch_um', dest='dot_pitch_um', type=float, default=default_config.dot_pitch_um, help='dot pitch in um')
+    ap.add_argument('-p', '--dot_pitch_um', dest='dot_pitch_um', type=float, default=None, help='dot pitch in um (prompted if omitted)')
     ap.add_argument('-m', '--max_grid_size', dest='max_grid_size', type=int, default=default_config.max_grid_size, help='max grid size, default is 100')
     
     # lut -----------------------------------------------------------

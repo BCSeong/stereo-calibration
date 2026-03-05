@@ -40,8 +40,10 @@ def plot_tvecs(tvecs: np.ndarray, dimension_names: list):
 
 def plot_reproj_errs(reproj_errs: np.ndarray):
     num_target, num_frames, _ = reproj_errs.shape
+    threshold = 0.5
     fig, ax = plt.subplots(1,num_target)
     for i in range(num_target):
+        ax[i].plot(range(num_frames), threshold * np.ones(num_frames), label=f"Threshold {threshold}", color='red')
         ax[i].plot(range(num_frames), reproj_errs[i, :], label=f"Target {i+1}")
         ax[i].set_title(f"Target {i+1}")
         ax[i].set_xlabel("Frame")

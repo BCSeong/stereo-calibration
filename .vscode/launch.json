@@ -2,17 +2,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: sample_imgs_KYICI_4M",
+            "name": "Python: sample_imgs_16M_lota_unit1_ver2_Feb21st",
             "type": "debugpy",
             "request": "launch",
             "module": "calib_v3.main",
             "args": [
-                "sample_imgs_KYICI_4M",
-                "output_4M_KY",
+                "sample_imgs_16M_lota_unit1_ver2_Feb21st",
+                "output_16M_lota1_KY_ver2_Feb21st",
                 "-p",
-                "500",
+                "1000",
                 "-b",
-                "25",
+                "50",
                 "--skip",
                 "1"
             ],
@@ -21,7 +21,7 @@
             "cwd": "${workspaceFolder}",
             "python": "${command:python.interpreterPath}",
             "stopOnEntry": false
-        },     
+        },             
         {
             "name": "Python: sample_imgs_KYICI_4M_with_CamCalResolutionPrior",
             "type": "debugpy",
@@ -86,7 +86,28 @@
             "cwd": "${workspaceFolder}",
             "python": "${command:python.interpreterPath}",
             "stopOnEntry": false
-        }
+        },
+        {
+            "name": "Python: sample_imgs_KYICI_4M",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "calib_v3.main",
+            "args": [
+                "sample_imgs_KYICI_4M",
+                "output_4M_KY",
+                "-p",
+                "500",
+                "-b",
+                "25",
+                "--skip",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
+            "stopOnEntry": false
+        }        
     ]
 }
 
