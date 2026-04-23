@@ -42,9 +42,6 @@ def run(argv=None) -> RuntimeState:
     ap = build_argparser()
     args = ap.parse_args(argv)
 
-    # Interactive mode detection: if src was omitted, user is running interactively
-    interactive = args.src is None
-
     # Interactive prompt for required args when omitted (English)
     if args.src is None:
         args.src = _prompt_non_empty("Enter source directory: ")
@@ -55,8 +52,8 @@ def run(argv=None) -> RuntimeState:
     if args.dot_pitch_um is None:
         args.dot_pitch_um = _prompt_non_empty("Enter dot pitch in um: ")
 
-    # Interactive prompt for debug image saving (only in interactive mode)
-    if interactive and not args.save_debug:
+    # Interactive prompt for debug image saving (skip if --save_debug already on CLI)
+    if not args.save_debug:
         args.save_debug = _prompt_yes_no("Save debug images?", default=False)
 
     # Interactive prompt returns str; convert to float for arithmetic
