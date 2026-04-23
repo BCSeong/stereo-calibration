@@ -29,9 +29,21 @@ def _prompt_non_empty(prompt: str) -> str:
         print("Value is required.")
 
 
+def _prompt_yes_no(prompt: str, default: bool = False) -> bool:
+    """Prompt for yes/no; return bool. Enter defaults to *default*."""
+    suffix = " [Y/n]: " if default else " [y/N]: "
+    raw = input(prompt + suffix).strip().lower()
+    if raw == "":
+        return default
+    return raw in ("y", "yes")
+
+
 def run(argv=None) -> RuntimeState:
     ap = build_argparser()
     args = ap.parse_args(argv)
+
+    # Interactive mode detection: if src was omitted, user is running interactively
+    interactive = args.src is None
 
     # Interactive prompt for required args when omitted (English)
     if args.src is None:
@@ -42,6 +54,16 @@ def run(argv=None) -> RuntimeState:
         args.blob_dia_in_px = _prompt_non_empty("Enter blob diameter in pixels: ")
     if args.dot_pitch_um is None:
         args.dot_pitch_um = _prompt_non_empty("Enter dot pitch in um: ")
+
+    # Interactive prompt for debug image saving (only in interactive mode)
+    if interactive and not args.save_debug:
+        args.save_debug = _prompt_yes_no("Save debug images?", default=False)
+
+    # Interactive prompt returns str; convert to float for arithmetic
+    if isinstance(args.blob_dia_in_px, str):
+        args.blob_dia_in_px = float(args.blob_dia_in_px)
+    if isinstance(args.dot_pitch_um, str):
+        args.dot_pitch_um = float(args.dot_pitch_um)
 
     # AppConfig 생성 및 CLI 인자로 업데이트
     config = AppConfig(

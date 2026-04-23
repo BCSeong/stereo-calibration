@@ -329,7 +329,7 @@ def save_calibration_results_from_runtime_state(
         logger.info('\t Transport vector (x, y, z): %s', str(RuntimeState.transport))
         logger.info('\t Resolution on center fiducial (um/px): %.6f', RuntimeState.resolution)
     
-    # Reprojection error 체크 및 디버그 가이드
+    # Reprojection error check and debug guide
     if RuntimeState.reprojected > 0.5:
         logger = get_logger()
         logger.error('[FAIL] RMS reprojection error (%.6f) exceeds threshold (0.5 px)', RuntimeState.reprojected)

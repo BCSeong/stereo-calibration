@@ -387,20 +387,20 @@ class ThreeDotDetector:
                 examined += 1
         
         '''
-        # DEBUG: 모든 후보의 점수 출력
-        print(f"[temp] Tc candidates scores (total={len(all_scores)}):") # 디버그 출력
+        # DEBUG: print all candidate scores
+        print(f"[temp] Tc candidates scores (total={len(all_scores)}):")
         for i, (score, c, triplet, A, nn24, P) in enumerate(all_scores):
             mean_error, hit = score if score is not None else (float('inf'), 0)
             print(f"  [{i+1}] mean_error={mean_error:.6f}, hit={hit}, triplet={triplet}")
             if A is not None:
                 print(f"      Tc={A.flatten()}")
         '''
-        # center_offset 검사 후 적절한 Tc 선택
+        # Select Tc with center_offset close to (0,0)
         if best is None:
             get_logger().error('[WARN] Tc: best is None')
             return None, None, None, None, None, None, examined
         
-        # 유효한 점수만 필터링
+        # Filter to valid scores only
         valid_scores = [(score, c, triplet, A, nn24, P) for score, c, triplet, A, nn24, P in all_scores 
                        if score is not None and np.isfinite(score[0])]
         
@@ -408,23 +408,23 @@ class ThreeDotDetector:
             get_logger().error('[WARN] No valid scores found')
             return None, None, None, None, None, None, examined
         
-        # 점수 기준으로 정렬 (낮은 점수가 좋음)
+        # Sort by score (lower is better)
         valid_scores.sort(key=lambda x: x[0])
         
-        # center_offset 검사하여 적절한 Tc 선택
+        # Choose Tc with center_offset close to (0,0)
         selected_tc = None
         for i, (score, c, triplet, A, nn24, P) in enumerate(valid_scores):
             if P is not None and c < len(P):
                 center_offset = P[c].copy()
-                # print(f"[temp] Tc[{i+1}] center_offset={center_offset}") # 디버그 출력
+                # print(f"[temp] Tc[{i+1}] center_offset={center_offset}")
                 
-                # center_offset이 (0,0)에 가까운지 검사 (threshold: 0.1)
+                # Check if center_offset is close to (0,0) (threshold: 0.1)
                 if np.linalg.norm(center_offset) < 0.1:
                     selected_tc = (score, c, triplet, A, nn24, P)
-                    # print(f"[temp] Selected Tc[{i+1}] - center_offset is close to (0,0)") # 디버그 출력
+                    # print(f"[temp] Selected Tc[{i+1}] - center_offset is close to (0,0)")
                     break
                 else:
-                    # print(f"[temp] Tc[{i+1}] rejected - center_offset too far from (0,0)") # 디버그 출력
+                    # print(f"[temp] Tc[{i+1}] rejected - center_offset too far from (0,0)")
                     pass
         
         if selected_tc is None:
