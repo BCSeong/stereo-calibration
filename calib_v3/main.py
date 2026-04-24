@@ -53,8 +53,8 @@ def run(argv=None) -> RuntimeState:
         args.dot_pitch_um = _prompt_non_empty("Enter dot pitch in um: ")
 
     # Interactive prompt for debug image saving (skip if --save_debug already on CLI)
-    if not args.save_debug:
-        args.save_debug = _prompt_yes_no("Save debug images?", default=False)
+    if args.save_debug is None:
+        args.save_debug = _prompt_yes_no("Save debug images?", default=True)
 
     # Interactive prompt returns str; convert to float for arithmetic
     if isinstance(args.blob_dia_in_px, str):

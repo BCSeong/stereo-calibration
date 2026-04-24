@@ -218,9 +218,13 @@ def generate_lut(
     # 수평/수직 플립 적용 (TransportConfig 정책 사용)
     map_x, map_y, did_flip, did_swap = _apply_flip_if_needed(map_x, map_y, transport, TRANSPORT_CONFIG.hflip_on_negative_mean_trel_x)
 
-    # did_swap = True 이면 remap 이후 이미지가 90deg 회전되어 map_x 가 가지는 최대 index 는 height 가 되고, map_y 가 가지는 최대 index 는 width 가 된다.
-    max_index_for_map_x = h if not did_swap else w
-    max_index_for_map_y = w if not did_swap else h
+    # (2026-04-23 BUG FIX) map_x는 source의 x좌표(범위 [0,w-1]), map_y는 source의 y좌표(범위 [0,h-1]).
+    # swap 시 map_x←map_y(y좌표, [0,h-1]), map_y←map_x(x좌표, [0,w-1]).
+    # 기존 코드는 h/w가 반대로 할당되어 직사각형 이미지에서 단축 기준 정사각형 crop이 발생했음.
+    # max_index_for_map_x = h if not did_swap else w  # BUG: h↔w swapped
+    # max_index_for_map_y = w if not did_swap else h  # BUG: h↔w swapped
+    max_index_for_map_x = w if not did_swap else h
+    max_index_for_map_y = h if not did_swap else w
 
     # 크롭 정책 적용
     if TRANSPORT_CONFIG.lut_policy == 'crop':
