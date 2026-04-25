@@ -82,7 +82,6 @@ class AppConfig:
     # Runtime/control flags
     save_debug: bool = True # 주요 디버깅
     save_reproj_png: bool = True # 디버깅에 큰 도움 안됨
-    save_points: bool = False # 디버깅에 큰 도움 안됨
     save_error: bool = True # 각 이미지 간 물리적 거리, 필수
     save_remap_preview: bool = True # remap 이후 이미지가 x+ 방향으로 이동하는지 확인하기 위해 성공한 프레임 중 처음 3개만 생성
     verbose: bool = True
@@ -106,9 +105,9 @@ class FrameData:
     - main.run: 전체 프레임 리스트를 구성
     """
     image_path: Path
-    image_points: Optional[np.ndarray]  # (N,2) or None if spooled
-    object_points: Optional[np.ndarray]  # (N,3) or None if spooled
-    points_file: Optional[Path] = None  # npz file when spooled
+    image_points: Optional[np.ndarray]  # (N,2)
+    object_points: Optional[np.ndarray]  # (N,3)
+    points_file: Optional[Path] = None
 
 
 @dataclass
