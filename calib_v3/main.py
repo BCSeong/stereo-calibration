@@ -438,8 +438,8 @@ def run(argv=None) -> RuntimeState:
                 verbose=config.verbose
             )
                 
-            # DEBUG remap 결과 예시 생성
-            if config.save_remap_preview:
+            # DEBUG remap 결과 예시 생성 (save_debug 활성화 시에만)
+            if config.save_debug and config.save_remap_preview:
                 if config.verbose:
                     logger.info('[INFO] Generating remap reports for %d kept frames', len(STATE.CALIB_RESULT.kept_indices))
                 # remap 이후 이미지가 x+ 방향으로 이동하는지 확인하기 위해 성공한 프레임 중 처음 3개만 생성
@@ -470,8 +470,8 @@ def run(argv=None) -> RuntimeState:
                     if config.verbose:
                         logger.warning('[WARN] map_x or map_y is None, skipping remap report generation')
             
-            # DEBUG reprojection_report 재투영 리포트 생성
-            if config.save_reproj_png:
+            # DEBUG reprojection_report 재투영 리포트 생성 (save_debug 활성화 시에만)
+            if config.save_debug and config.save_reproj_png:
                 if config.verbose:
                     logger.info('[INFO] Generating reprojection reports for %d kept frames', len(STATE.CALIB_RESULT.kept_indices))
                 
