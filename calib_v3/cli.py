@@ -42,8 +42,7 @@ def build_argparser() -> argparse.ArgumentParser:
     # runtime/control ---------------------------------------------------------
     ap.add_argument('--skip', dest='skip', type=int, default=default_config.skip, help='skip frames, 1 means all frames, 10 means every 10th frame')
     ap.add_argument('--save_debug', dest='save_debug', action='store_true', default=None, help='save debug images (prompted interactively if omitted)')
-    ap.add_argument('--save_points', dest='save_points', action='store_true', default=default_config.save_points, help='save points')    
-    ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error, help='save error')    
+    ap.add_argument('--save_error', dest='save_error', action='store_true', default=default_config.save_error, help='save error')
     ap.add_argument('--save_reproj_png', dest='save_reproj_png', action='store_true', default=default_config.save_reproj_png, help='save reprojection figure and png')
     ap.add_argument('--save_remap_preview', dest='save_remap_preview', action='store_true', default=default_config.save_remap_preview, help='save remap preview')
     

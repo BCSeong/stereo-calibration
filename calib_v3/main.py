@@ -131,17 +131,11 @@ def run(argv=None) -> RuntimeState:
 
     det = ThreeDotDetector(BLOB_CONFIG, GRID_CONFIG, AFFINE_CANDIDATE_CONFIG, SCORE_CONFIG, config.debug_dir)
 
-    # 디버그 및 산출물 저장 위치 정의
-    out_spool = config.debug_dir / 'spool'           # Points 저장용 (항상 생성)
-    
     # 디버그 관련 디렉터리들 (save_debug 활성화 시에만 생성)
     out_bin = config.debug_dir / 'bin'               # Binarized 이미지용
     out_success = config.debug_dir / 'Blob_Success'  # 성공한 blob 검출 결과
     out_fails = config.debug_dir / 'Blob_Fails'      # 실패한 blob 검출 결과
     out_reproj = config.debug_dir / 'reprojection_reports'  # 재투영 리포트
-    
-    # 필수 디렉터리 생성 (항상)
-    out_spool.mkdir(parents=True, exist_ok=True)
     
     # 디버그 디렉터리 생성 (save_debug 활성화 시에만)
     if config.save_debug:
@@ -316,21 +310,6 @@ def run(argv=None) -> RuntimeState:
             gc.collect()
             logger.info('[INFO] Blob and Grid assignment done: processed=%d/%d, exception=%d, grid_success=%s, img_path=%s', processed, target_frames, bool(failed), bool(success_flag), str(img_path))
             
-        # save_points 옵션이 활성화된 경우 전체 points를 하나의 NPZ로 저장
-        # 현재 저장한 뒤 debugging 하는 프로세스 없음 (삭제 무관)
-        if config.save_points and STATE.FRAME_DATA_LIST:
-            npz_path = out_spool / 'all_points.npz'
-            import pickle
-            data = {
-                'frames': STATE.FRAME_DATA_LIST,
-                'num_frames': len(STATE.FRAME_DATA_LIST)
-            }
-            with open(str(npz_path).replace('.npz', '.pkl'), 'wb') as f:
-                pickle.dump(data, f)
-            if config.verbose:
-                logger.info('[INFO] Saved %d frames to %s', len(STATE.FRAME_DATA_LIST), str(npz_path))
-        
-        
     # ------------------------------------------------------------------------------------------
     # Blob & Grid Summary report (HTML) 저장
     # ------------------------------------------------------------------------------------------
