@@ -153,17 +153,23 @@ def run(argv=None) -> RuntimeState:
 
     # 캘리브레이션용 points 수집 (types.py 구조 사용)
     STATE.FRAME_DATA_LIST: List[FrameData] = []
-    import gc    
+    # import gc  # [PERF] gc.collect() 제거로 불필요
     
     # ------------------------------------------------------------------------------------------
     # Blob scan
     # ------------------------------------------------------------------------------------------
-    total_frames = len(list(iter_images_recursive(config.src)))
-    target_frames = len(list(iter_images_recursive(config.src, step = config.skip)))
+    # [PERF] rglob 1회만 실행, 기존 코드는 iter_images_recursive를 3회 호출하여 디렉터리를 반복 스캔함
+    # total_frames = len(list(iter_images_recursive(config.src)))
+    # target_frames = len(list(iter_images_recursive(config.src, step = config.skip)))
+    # for img_path in iter_images_recursive(config.src, step = config.skip):
+    all_images = list(iter_images_recursive(config.src))
+    total_frames = len(all_images)
+    target_images = all_images[::config.skip]
+    target_frames = len(target_images)
     logger.info('[INFO] total frames=%d (skip=%d)', total_frames, config.skip)
     logger.info('[INFO] target frames=%d', target_frames)
     logger.info('[ENTER] Blob scan start with %d frames', target_frames)
-    for img_path in iter_images_recursive(config.src, step = config.skip):
+    for img_path in target_images:
         gray = None
         pts = None
         diam = None
@@ -307,7 +313,8 @@ def run(argv=None) -> RuntimeState:
         finally:
             # 메모리 해제
             del gray, pts, diam
-            gc.collect()
+            # [PERF] gc.collect()를 매 프레임마다 호출하면 누적 오버헤드가 큼, Python 자동 GC로 충분
+            # gc.collect()
             logger.info('[INFO] Blob and Grid assignment done: processed=%d/%d, exception=%d, grid_success=%s, img_path=%s', processed, target_frames, bool(failed), bool(success_flag), str(img_path))
             
     # ------------------------------------------------------------------------------------------

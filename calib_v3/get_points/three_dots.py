@@ -66,10 +66,15 @@ class ThreeDotDetector:
             self._last_binarized_image = binarized_image
             contours, _ = cv2.findContours(binarized_image, mode, cv2.CHAIN_APPROX_SIMPLE)
             n_total = int(len(contours))
+            # [PERF] contour 꼭짓점 수로 사전 필터링: min_area 원의 둘레 기준 최소 꼭짓점 수 추정
+            # 원 둘레 = 2π√(area/π), CHAIN_APPROX_SIMPLE이므로 꼭짓점은 둘레보다 적음
+            _min_cnt_len = max(4, int(np.sqrt(float(self.blob_config.min_area)) * 0.5))
+            contours = [cnt for cnt in contours if len(cnt) >= _min_cnt_len]
+            n_after_prefilter = len(contours)
             removed_area = 0
             removed_radius = 0
             removed_fill = 0
-            removed_ecc = 0            
+            removed_ecc = 0
             kps: List[cv2.KeyPoint] = []
             for cnt in contours:
                 area = float(cv2.contourArea(cnt))
@@ -171,7 +176,7 @@ class ThreeDotDetector:
                 except Exception:
                     get_logger().warning('[WARN] KDTree.query failed')
                     pass            
-            get_logger().debug('\t\t[DBG_BLOB] contours: %d kept: %d removed_area=%d removed_r=%d removed_fill=%d removed_ecc=%d removed_fnn=%d', n_total, len(kps), removed_area, removed_radius, removed_fill, removed_ecc, removed_fnn)            
+            get_logger().info('[PERF_BLOB] contours=%d prefilter=%d kept=%d removed: area=%d radius=%d fill=%d ecc=%d fnn=%d', n_total, n_after_prefilter, len(kps), removed_area, removed_radius, removed_fill, removed_ecc, removed_fnn)            
         
         elif self.blob_config.retrieval == "SBD": # SimpleBlobDetector            
             def _create_blob_detector() -> cv2.SimpleBlobDetector:
@@ -605,22 +610,27 @@ class ThreeDotDetector:
 
     def run_on_image(self, image_path: Path, gray: np.ndarray) -> DetectionResult:
         """단일 이미지에 대해 전체 파이프라인 실행 후 DetectionResult 반환."""
-        
+        import time as _time
+        _t0 = _time.perf_counter()
+
         # Debug 정보 추출
         sub = image_path.parent.name
-        stem = image_path.stem              
-        
+        stem = image_path.stem
+
         # step 1: blob detection
         pts, diam, kps = self.detect_blobs(gray)
+        _t1 = _time.perf_counter()
 
         # binarized image는 return으로 전달 (외부에서 저장)
         binarized_image = self._last_binarized_image
 
         # step 2: ratio sort
         order, ratio = self.ratio_sort(pts, diam)
-        
+        _t2 = _time.perf_counter()
+
         # step 3: central candidates
         cands = self.find_central_candidates(pts, order, ratio, diam)
+        _t3 = _time.perf_counter()
         # central candidates 검출 실패 시 return 수행
         if not cands:
             # 시각화는 main에서 처리 
@@ -631,7 +641,9 @@ class ThreeDotDetector:
             #     out_png = out_vis_dir / f"{sub}_{stem}_blobs.png"
             #     save_detection_overlay(gray, pts, None, out_png, None, None)
 
-            get_logger().error('[WARN] Central element search failed: %s', str(image_path))             
+            get_logger().error('[WARN] Central element search failed: %s', str(image_path))
+            get_logger().info('[PERF] %s | blob=%.3fs ratio=%.3fs cands=%.3fs (EARLY EXIT: no cands) TOTAL=%.3fs',
+                image_path.name, _t1-_t0, _t2-_t1, _t3-_t2, _t3-_t0)
             return DetectionResult(
                 Tc=None,
                 center_index=None,
@@ -647,10 +659,13 @@ class ThreeDotDetector:
         
         # step 4: choose Tc
         Tc, cidx, triplet, best_P, nn24, score_tuple, examined = self.choose_Tc(pts, cands)
+        _t4 = _time.perf_counter()
         
         # DEBUG: 선택된 아핀 변환의 평균 격자거리(mean_error) 검증.        
         if score_tuple is None or not np.isfinite(score_tuple[0]) or float(score_tuple[0]) > float(self.score_config.max_affine_mean_error):
             get_logger().warning('[WARN] mean_error of Tc is too large: %.3f > %.3f', (np.nan if score_tuple is None else float(score_tuple[0])), float(self.score_config.max_affine_mean_error))
+            get_logger().info('[PERF] %s | blob=%.3fs ratio=%.3fs cands=%.3fs Tc=%.3fs (EARLY EXIT: bad Tc) TOTAL=%.3fs',
+                image_path.name, _t1-_t0, _t2-_t1, _t3-_t2, _t4-_t3, _t4-_t0)
             return DetectionResult(
                 Tc=None,
                 center_index=None,
@@ -670,6 +685,7 @@ class ThreeDotDetector:
         
         # step 5: grid assign
         grid = self.grid_assign(best_P, thr=self.score_config.grid_assign_thr, fnn_grid_explore_size=self.blob_config.fnn_grid_explore_size) if best_P is not None else {}
+        _t5 = _time.perf_counter()
         
         # DEBUG: triplet (i) 점의 할당 결과 출력
         if triplet is not None and grid:
@@ -710,8 +726,14 @@ class ThreeDotDetector:
             sigma_prune=self.score_config.sigma_prune,
             estimatation_affine_method_opencv=self.grid_config.estimatation_affine_method_opencv,
         ) if grid is not None and Tc is not None else {}
+        _t6 = _time.perf_counter()
 
-        # 시각화는 main에서 처리 
+        # [PERF] step별 소요시간 로그
+        get_logger().info('[PERF] %s | blob=%.3fs ratio=%.3fs cands=%.3fs Tc=%.3fs grid=%.3fs dilate=%.3fs TOTAL=%.3fs',
+            image_path.name,
+            _t1-_t0, _t2-_t1, _t3-_t2, _t4-_t3, _t5-_t4, _t6-_t5, _t6-_t0)
+
+        # 시각화는 main에서 처리
         # if should_save:            
         #     out_vis_dir = self.debug_dir / 'Blob_Success' if not flag_TC_FAILED else self.debug_dir / 'Blob_Fails'
         #     out_vis_dir.mkdir(parents=True, exist_ok=True)
