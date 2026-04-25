@@ -52,6 +52,12 @@ def run(argv=None) -> RuntimeState:
     if args.dot_pitch_um is None:
         args.dot_pitch_um = _prompt_non_empty("Enter dot pitch in um: ")
 
+    # Interactive prompt for initial focal length guess
+    if args.initial_focal_length is None:
+        if _prompt_yes_no("Use initial focal length guess?", default=False):
+            fl_str = _prompt_non_empty("Enter focal length in pixels: ")
+            args.initial_focal_length = float(fl_str)
+
     # Interactive prompt for debug image saving (skip if --save_debug already on CLI)
     if args.save_debug is None:
         args.save_debug = _prompt_yes_no("Save debug images?", default=True)
@@ -376,11 +382,27 @@ def run(argv=None) -> RuntimeState:
         try:
             if args.verbose:
                 logger.info('[INFO] Starting calibration with %d frames', len(STATE.FRAME_DATA_LIST))
-            
+
+            # K_guess 빌드: focal length는 사용자 입력, cx/cy는 이미지 중심
+            K_guess = None
+            use_guess = False
+            if args.initial_focal_length is not None:
+                h, w = STATE.image_size
+                f = float(args.initial_focal_length)
+                K_guess = np.array([
+                    [f,   0.0, w / 2.0],
+                    [0.0, f,   h / 2.0],
+                    [0.0, 0.0, 1.0]
+                ], dtype=np.float64)
+                use_guess = True
+                logger.info('[INFO] K_guess built from focal_length=%.2f, cx=%.1f, cy=%.1f', f, w / 2.0, h / 2.0)
+
             # CalibResult를 RuntimeState에 저장
-            logger.info('[BRANCH] calibrate_shared called (remove_outliers=%s)', str(config.remove_outliers))
+            logger.info('[BRANCH] calibrate_shared called (remove_outliers=%s, use_guess=%s)', str(config.remove_outliers), str(use_guess))
             STATE.CALIB_RESULT = calibrate_shared(
                 RuntimeState=STATE,
+                K_guess=K_guess,
+                use_guess=use_guess,
                 remove_outliers=config.remove_outliers,
                 outlier_threshold=config.outlier_threshold
             )
@@ -403,9 +425,11 @@ def run(argv=None) -> RuntimeState:
                         logger.info('[BRANCH] Re-running with debug enabled...')
 
                         # remove_outliers 옵션 활성화하여 재실행
-                        logger.info('[BRANCH] calibrate_shared called (remove_outliers=%s)', str(config.remove_outliers))
+                        logger.info('[BRANCH] calibrate_shared called (remove_outliers=True, use_guess=%s)', str(use_guess))
                         STATE.CALIB_RESULT = calibrate_shared(
                             RuntimeState=STATE,
+                            K_guess=K_guess,
+                            use_guess=use_guess,
                             remove_outliers=True,
                             outlier_threshold=config.outlier_threshold
                         )

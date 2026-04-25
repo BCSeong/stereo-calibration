@@ -21,6 +21,7 @@ def build_argparser() -> argparse.ArgumentParser:
     
     # prior information -------------------------------------------------------------
     ap.add_argument('-r', '--resolution_from_CamCalResult_um_per_px', dest='resolution_from_CamCalResult_um_per_px', type=float, default=default_config.resolution_from_CamCalResult_um_per_px, help='resolution from camera calibration result, if None, it is calculated from mean Z position of blobs from stereo target')
+    ap.add_argument('--initial_focal_length', dest='initial_focal_length', type=float, default=None, help='initial focal length guess in pixels (prompted interactively if omitted). cx/cy will be set to image center.')
     
     # blob params -------------------------------------------------------------        
     ap.add_argument('-b', '--blob_dia_in_px', dest='blob_dia_in_px', type=float, default=None, help='blob diameter in pixels (prompted if omitted)')
