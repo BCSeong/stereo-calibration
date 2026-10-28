@@ -2,6 +2,8 @@
 
 English · 한국어 (Korean version below)
 
+> **Example data**: download the example input images and results from the [shared folder](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo) (see [Example data](#example-data)).
+
 ## Requirements
 
 - **Python**: 3.7 or later (recommended: 3.9)
@@ -45,7 +47,14 @@ python -m calib_v3.main <input_image_folder> <output_folder>
 
 The example inputs and outputs are large, so they are not included in git. Download them from the shared folder, put them in this folder, and run.
 
-- Shared folder: [kyg_rnd_opt_group SharePoint](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo)
+- [Shared folder (SharePoint)](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo):
+  - `sample_imgs_16M_lota_unit1_ver2_Feb21st.7z`: stereo input images (204 images)
+  - `result_stereo_opt_python_debug.7z`: full output of the algorithm, including debugging output
+  - `result_stereo_opt_python/`: main output files
+- Run with this example (unzip the input next to this README; the parameters are those of the shared result):
+  ```bash
+  python -m calib_v3.main sample_imgs_16M_lota_unit1_ver2_Feb21st result_stereo_opt_python --dot_pitch_um 1000 --blob_dia_in_px 50
+  ```
 - `apply_stereo_camera_remap/map/` (example remap LUT tiff files) is also excluded from git.
 
 ### 1. Required packages
@@ -184,6 +193,8 @@ sample_imgs_KYICI_4M/
 
 # 한국어
 
+> **예제 데이터**: 예제 입력 영상과 결과는 [공유 폴더](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo)에서 받습니다 (아래 "예제 데이터" 절 참고).
+
 ## 요구사항
 
 - **Python**: 3.7 이상 (권장: 3.9)
@@ -227,7 +238,14 @@ python -m calib_v3.main <입력_이미지_폴더> <출력_폴더>
 
 예제 입력·출력은 용량이 커서 git에 포함하지 않습니다. 공유 폴더에서 받아 이 폴더에 두고 실행합니다.
 
-- 공유 폴더: [kyg_rnd_opt_group SharePoint](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo)
+- [공유 폴더 (SharePoint)](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo):
+  - `sample_imgs_16M_lota_unit1_ver2_Feb21st.7z`: stereo 입력 영상 (204장)
+  - `result_stereo_opt_python_debug.7z`: 디버깅 출력을 포함한 알고리즘 전체 출력 결과
+  - `result_stereo_opt_python/`: 주요 산출물 결과
+- 이 예제로 실행 (입력 7z를 이 README 옆에 풀고 실행; 파라미터는 공유된 결과와 같음):
+  ```bash
+  python -m calib_v3.main sample_imgs_16M_lota_unit1_ver2_Feb21st result_stereo_opt_python --dot_pitch_um 1000 --blob_dia_in_px 50
+  ```
 - `apply_stereo_camera_remap/map/` (remap LUT 예제 tiff)도 git에서 제외되어 있습니다.
 
 ### 1. 필수 패키지
