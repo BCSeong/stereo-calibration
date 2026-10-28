@@ -30,7 +30,8 @@ def calibrate_shared(RuntimeState: RuntimeState,
 
     object_points_list_mm = [f.object_points / 1000 for f in RuntimeState.FRAME_DATA_LIST] # um to mm
     image_points_list_px = [f.image_points for f in RuntimeState.FRAME_DATA_LIST]
-    image_size = RuntimeState.image_size
+    # STATE.image_size는 (height, width), OpenCV calibrateCamera는 (width, height) 필요
+    image_size = (RuntimeState.image_size[1], RuntimeState.image_size[0])
 
     
     kept_indices = list(range(len(object_points_list_mm)))
