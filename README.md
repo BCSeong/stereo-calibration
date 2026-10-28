@@ -1,3 +1,189 @@
+# Stereo Calibration
+
+English · 한국어 (Korean version below)
+
+## Requirements
+
+- **Python**: 3.7 or later (recommended: 3.9)
+
+## Setup and run (Windows / other PCs)
+
+So that this folder alone is enough to run the tool on another PC, we recommend creating a virtual environment (`.venv`) inside the folder.
+
+**1. Create a virtual environment (first time only)** — Requires Python 3.7 or later (3.9 recommended) (tested with: Python 3.9.12)
+
+```bat
+cd stereo-calibration
+py -3.9 -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+**2. Run**
+
+- Double-click `run_stereo_calibration.bat`, or run it from a command prompt with arguments: `run_stereo_calibration.bat sample_imgs_KYICI_4M output_4M_KY --dot_pitch_um 500 --blob_dia_in_px 25`
+- If you run it without arguments, it asks for the required values interactively.
+- When it finishes, it shows the result code (Exit code) and the window stays open and waits.
+
+**Python used by `run_stereo_calibration.bat` (search order)**
+
+1. `.venv` in this folder (the environment created in step 1 above)
+2. `.venv39` in the parent folder (shared lota_tools environment, the old method)
+3. `py -3` or `python` on PATH
+
+If none of the three is found, it prints how to create a virtual environment and exits.
+
+On **Linux / macOS**, run it directly instead of using the bat file.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m calib_v3.main <input_image_folder> <output_folder>
+```
+
+## Example data
+
+The example inputs and outputs are large, so they are not included in git. Download them from the shared folder, put them in this folder, and run.
+
+- Shared folder: [kyg_rnd_opt_group SharePoint](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo)
+- `apply_stereo_camera_remap/map/` (example remap LUT tiff files) is also excluded from git.
+
+### 1. Required packages
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Run example
+
+Basic command:
+
+```bash
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M_KY
+```
+
+#### Command structure
+
+```bash
+python -m calib_v3.main <input_image_folder> <output_folder>
+```
+
+- **Input image folder** (`sample_imgs_KYICI_4M`): folder that contains the images for calibration
+  - Subfolder structure is supported (e.g. `_1/`, `_2/`, `_3/`, `_4/`)
+  - Supported formats: `.bmp`, `.png`
+  - !!!Important: images must be debayered mono8 (raw input causes an error during binarization)
+- **Output folder** (`output_4M`): folder where the calibration results are saved
+- **Validation code** Because of the current optics schedule, no code example is planned. Requirements will be provided instead.
+- **Speed optimization** After the current C++ implementation, if it is still too slow, a new target will be made. The dot size and spacing will be increased.
+
+#### Main options
+
+```bash
+# When the object sampling resolution mm/px from Camera Calibration is given
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M -r 10
+
+# Enable saving of debug images (default: True)
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_debug
+
+# Save Transport error plot (also included in json, default: save_error)
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_error
+
+# Save reprojection report (default: True)
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_reproj_png
+
+# Save Remap LUT preview images (default: True)
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_remap_preview
+
+# Save point npz
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --save_points
+
+# Print detailed log
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M --verbose
+
+# skip: skips images to run faster <-> trade-off with accuracy
+# Set dot pitch and blob size: currently, setting only these two was confirmed to work for both target types
+python -m calib_v3.main sample_imgs_KYICI_4M output_4M_KY --dot_pitch_um 500 --blob_dia_in_px 25 --skip 10
+python -m calib_v3.main sample_imgs_16M_lota_unit1 output_16M_lota_unit1_KY --dot_pitch_um 700 --blob_dia_in_px 35 --skip 10
+python -m calib_v3.main sample_imgs_16M_lota_unit2 output_16M_lota_unit2_KY --dot_pitch_um 700 --blob_dia_in_px 35 --skip 10
+```
+
+### Output files
+
+- `calibration.json`: camera intrinsic/extrinsic parameters and metadata
+- `calibration_lut_forward.json`: Forward LUT information (includes orthographic projection parameters)
+- `calibration_lut_backward.json`: Backward LUT information (optional)
+- `calibration_err_dots.json`: per-frame reprojection error information
+- `calibration.log`: run log
+- `calibration_lut/`
+  - `map_x.tiff`, `map_y.tiff`: Undistort/Rectify LUT (TIFF format)
+  - `map_x.bin`, `map_y.bin`: Undistort/Rectify LUT (binary format)
+- `calibration_lut_backward/` (optional)
+  - `map_x.tiff`, `map_y.tiff`: Backward LUT (TIFF format)
+  - `map_x.bin`, `map_y.bin`: Backward LUT (binary format)
+
+### Debug output (with the --save_debug option, default: True)
+
+- `report/bin/`: binarized images
+- `report/Blob_Success/`: overlay of successfully detected blobs
+- `report/Blob_Fails/`: images where detection failed
+- `report/Grid_Report/`: grid assignment report (point IDs and mesh visualization)
+- `report/Grid_Path_Report/`: grid path report (spiral path and u/v axis arrows)
+- `report/Blob_Grid_Assignment_Summary.html`: per-frame statistics summary (HTML table)
+- `report/reprojection_reports/`: reprojection reports (images and plots, --save_reproj_png option)
+- `report/*_remap_preview_*.png`: preview of the result of applying the Remap LUT (--save_remap_preview option, default: True)
+
+## Example input image folder structure
+
+```
+sample_imgs_KYICI_4M/
+├── _1/
+│   ├── img00000.png
+│   ├── img00001.png
+│   └── ...
+├── _2/
+│   ├── img00000.png
+│   └── ...
+├── _3/
+│   └── ...
+└── _4/
+    └── ...
+```
+
+## Main features
+
+### 1. Blob detection and grid assignment
+- Automatic blob detection (based on SimpleBlobDetector)
+- Grid assignment based on a 3-dot pattern
+- Grid traversal along a spiral path, and visualization
+
+### 2. Camera Calibration
+- OpenCV-based camera calibration
+- Outlier removal option (`--remove_outliers`)
+- Per-frame reprojection error analysis
+
+### 3. LUT (Look-Up Table) generation
+- Undistort/Rectify LUT generation
+- Forward/Backward LUT support
+- Crop/Expand policy support
+- Automatic direction adjustment based on transport vectors
+
+### 4. Debug visualization
+- Grid mesh visualization
+- Spiral path and u/v axis direction display
+- Reprojection error visualization
+- Remap result preview
+
+## Notes
+
+- Default values of all options are managed in the `AppConfig` class in `calib_v3/utils/types.py`
+- See the detailed log in the `output_4M/report/calibration.log` file
+- LUTs are saved in TIFF and binary formats and can be used with the `cv2.remap()` function
+- Orthographic projection parameters are included in `calibration_lut_forward.json` (target_Z_um, resolution_at_target_Z_um, etc.)
+
+---
+
+# 한국어
+
 ## 요구사항
 
 - **Python**: 3.7 이상 (권장: 3.9)
@@ -101,8 +287,7 @@ python -m calib_v3.main sample_imgs_KYICI_4M output_4M --verbose
 python -m calib_v3.main sample_imgs_KYICI_4M output_4M_KY --dot_pitch_um 500 --blob_dia_in_px 25 --skip 10
 python -m calib_v3.main sample_imgs_16M_lota_unit1 output_16M_lota_unit1_KY --dot_pitch_um 700 --blob_dia_in_px 35 --skip 10
 python -m calib_v3.main sample_imgs_16M_lota_unit2 output_16M_lota_unit2_KY --dot_pitch_um 700 --blob_dia_in_px 35 --skip 10
-
-
+```
 
 ### 출력 파일
 
