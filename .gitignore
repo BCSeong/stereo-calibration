@@ -5,3 +5,5 @@ legacy*
 __pycache__/
 *.pyc
 .history
+# local virtual environment
+.venv/
