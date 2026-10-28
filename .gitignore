@@ -7,3 +7,6 @@ __pycache__/
 .history
 # local virtual environment
 .venv/
+
+# remap LUT examples (large; get them from the shared data folder)
+apply_stereo_camera_remap/map/

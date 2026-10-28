@@ -37,6 +37,13 @@ pip install -r requirements.txt
 python -m calib_v3.main <입력_이미지_폴더> <출력_폴더>
 ```
 
+## 예제 데이터
+
+예제 입력·출력은 용량이 커서 git에 포함하지 않습니다. 공유 폴더에서 받아 이 폴더에 두고 실행합니다.
+
+- 공유 폴더: [kyg_rnd_opt_group SharePoint](https://kohyoung.sharepoint.com/:f:/s/kyg_rnd_opt_group/IgDWvBFS3ChETbErtMCnhAz2Afvzfe8ZOv6SDDnS94_GDss?e=N0KTJo)
+- `apply_stereo_camera_remap/map/` (remap LUT 예제 tiff)도 git에서 제외되어 있습니다.
+
 ### 1. 필수 패키지
 
 ```bash
